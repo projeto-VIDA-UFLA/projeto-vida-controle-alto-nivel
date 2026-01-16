@@ -9,6 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(vida_interfaces)
+find_package(std_msgs REQUIRED)
 
 add_executable(remote_control)
 ament_target_dependencies(remote_control rclcpp std_msgs) 
@@ -38,10 +39,23 @@ target_sources(
     src/Record/Record.h  
 )
 
+add_executable(steering_control)
+ament_target_dependencies(steering_control rclcpp std_msgs) 
+
+target_sources(
+  steering_control
+
+  PRIVATE
+    src/steering_control/SteeringControl.h  
+    src/steering_control/SteeringControl.cpp
+    
+)
+
 
 install(TARGETS
   record
-  remote_control  
+  remote_control 
+  steering_control 
   DESTINATION lib/${PROJECT_NAME}
 )
 
