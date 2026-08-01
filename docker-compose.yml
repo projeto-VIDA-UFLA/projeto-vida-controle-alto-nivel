@@ -1,0 +1,24 @@
+services:
+  vida_gamepad:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vida_gamepad
+    restart: unless-stopped
+    network_mode: host
+
+    environment:
+      ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-0}"
+      RMW_IMPLEMENTATION: "${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+
+    volumes:
+      - /dev/input:/dev/input
+
+    device_cgroup_rules:
+      - "c 13:* rwm"
+
+    command:
+      - ros2
+      - launch
+      - vida_gamepad
+      - gamepad.launch.py
