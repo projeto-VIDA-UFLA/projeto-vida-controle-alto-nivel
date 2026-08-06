@@ -1,24 +1,21 @@
 services:
-  vida_gamepad:
+
+  ros_ws:
     build:
-      context: .
+      context: ./ros_ws
       dockerfile: Dockerfile
-    container_name: vida_gamepad
+    image: vida-ros-ws:humble
+    container_name: ros_ws
     restart: unless-stopped
     network_mode: host
+    stdin_open: true
+    tty: true
 
     environment:
-      ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-0}"
-      RMW_IMPLEMENTATION: "${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+      DISPLAY: ${DISPLAY}
+      QT_X11_NO_MITSHM: "1"
 
     volumes:
-      - /dev/input:/dev/input
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
 
-    device_cgroup_rules:
-      - "c 13:* rwm"
-
-    command:
-      - ros2
-      - launch
-      - vida_gamepad
-      - gamepad.launch.py
+    command: ["bash", "-lc", "source /opt/ros/humble/setup.bash && source /vida_ws/install/setup.bash && sleep infinity"]
