@@ -1,5 +1,4 @@
 services:
-
   ros_ws:
     build:
       context: ./ros_ws
@@ -8,14 +7,30 @@ services:
     container_name: ros_ws
     restart: unless-stopped
     network_mode: host
+    ipc: host
     stdin_open: true
     tty: true
 
     environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      # Impede o Fast DDS de tentar usar memória compartilhada entre o
+      # container e os processos ROS executados diretamente no host.
+      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
       DISPLAY: ${DISPLAY}
       QT_X11_NO_MITSHM: "1"
 
+    # Disponibiliza /dev/input/js* e /dev/input/event* para o joy_node.
     volumes:
+      - /dev/input:/dev/input:rw
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
 
-    command: ["bash", "-lc", "source /opt/ros/humble/setup.bash && source /vida_ws/install/setup.bash && sleep infinity"]
+    device_cgroup_rules:
+      - "c 13:* rmw"
+
+    command:
+      - bash
+      - -lc
+      - >-
+        source /opt/ros/humble/setup.bash &&
+        source /vida_ws/install/setup.bash &&
+        exec ros2 launch control_pkg gamepad_control.launch.py

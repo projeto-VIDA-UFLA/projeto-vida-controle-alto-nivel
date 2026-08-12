@@ -1,0 +1,17 @@
+# Nome do nó que converte os comandos do gamepad em referências para o veículo.
+/gamepad/control:
+  # Seção padrão do ROS 2 que reúne os parâmetros do nó.
+  ros__parameters:
+    # Índice do eixo horizontal do analógico esquerdo na mensagem Joy (comum em controles PS4 no Linux).
+    left_stick_axis: 0
+    # Índice do eixo do gatilho R2 na mensagem Joy (comum em controles PS4 no Linux).
+    r2_axis: 5
+
+# Nome do nó do pacote joy responsável por ler o gamepad conectado ao sistema.
+/gamepad/joy_node:
+  # Seção padrão do ROS 2 que reúne os parâmetros do nó.
+  ros__parameters:
+    # Identificador do dispositivo de entrada; 0 corresponde normalmente a /dev/input/js0.
+    device_id: 0
+    # Frequência, em hertz, com que o último estado do gamepad é republicado sem novos eventos.
+    autorepeat_rate: 50.0

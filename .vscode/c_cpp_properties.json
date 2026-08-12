@@ -4,6 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "~/ros_ws/**",
                 "/opt/ros/humble/include/**"
             ],
             "defines": [],
