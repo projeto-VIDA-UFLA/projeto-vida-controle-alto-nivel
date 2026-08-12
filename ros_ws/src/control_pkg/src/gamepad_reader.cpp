@@ -16,7 +16,7 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
 
   drive_reference_publisher_ = this->create_publisher<vida_interfaces::msg::DriveReference>("/vida/control/drive/reference", 10);
 
-  gamepad_enabled_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/vida/gamepad/enabled", 10);
+  gamepad_enabled_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/gamepad/enabled", 10);
 
   reference_timer_ = this->create_wall_timer(std::chrono::milliseconds(40), std::bind(&GamepadReader::publish_references, this));
 
