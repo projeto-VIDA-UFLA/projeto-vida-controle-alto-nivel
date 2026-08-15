@@ -59,7 +59,7 @@ void GamepadReader::publish_references()
 
   vida_interfaces::msg::SteeringReference steering_reference;
   steering_reference.timestamp = timestamp;
-  steering_reference.angle_deg = -25.0F * left_stick_value_;
+  steering_reference.angle_deg = -15.0F * left_stick_value_;
   steering_reference.angular_velocity_deg_s = 0.0F;
   
 
