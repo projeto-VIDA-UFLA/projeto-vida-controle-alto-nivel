@@ -3,7 +3,7 @@
 <package format="3">
   <name>control_pkg</name>
   <version>0.1.0</version>
-  <description>Publica as leituras do R2 e do analogico esquerdo de um gamepad.</description>
+  <description>Publica as leituras do R2, do L2 e do analogico esquerdo de um gamepad.</description>
   <maintainer email="167372071+Nucleo-LMT@users.noreply.github.com">odroid</maintainer>
   <license>Apache-2.0</license>
 

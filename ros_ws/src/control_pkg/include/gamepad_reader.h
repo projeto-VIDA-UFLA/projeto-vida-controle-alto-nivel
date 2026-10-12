@@ -30,10 +30,12 @@ private:
   // Índices dos eixos utilizados na mensagem Joy.
   int left_stick_axis_;
   int r2_axis_;
+  int l2_axis_;
 
   // Últimos valores recebidos dos controles.
   float left_stick_value_{0.0F};
   float r2_value_{1.0F};
+  float l2_value_{1.0F};
   bool enabled_{false};
 
   // Momento da ultima mensagem do gamepad, usado como watchdog.

@@ -6,6 +6,8 @@
     left_stick_axis: 0
     # Índice do eixo do gatilho R2 na mensagem Joy (comum em controles PS4 no Linux).
     r2_axis: 5
+    # Índice do eixo do gatilho L2 na mensagem Joy, usado como freio (comum em controles PS4 no Linux).
+    l2_axis: 2
 
 # Nome do nó do pacote joy responsável por ler o gamepad conectado ao sistema.
 /gamepad/joy_node:
