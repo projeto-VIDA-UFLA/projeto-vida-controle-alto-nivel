@@ -8,6 +8,10 @@
     r2_axis: 5
     # Índice do eixo do gatilho L2 na mensagem Joy, usado como freio (comum em controles PS4 no Linux).
     l2_axis: 2
+    # Velocidade de referencia (m/s) com o R2 no fundo. O ESP32 limita a 3 m/s.
+    max_speed_m_s: 1.0
+    # Fracao do curso do L2 a partir da qual a velocidade e zerada e o freio vai a total.
+    brake_threshold: 0.1
 
 # Nome do nó do pacote joy responsável por ler o gamepad conectado ao sistema.
 /gamepad/joy_node:

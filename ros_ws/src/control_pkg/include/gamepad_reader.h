@@ -32,6 +32,10 @@ private:
   int r2_axis_;
   int l2_axis_;
 
+  // Velocidade com R2 no fundo e fracao do L2 que aciona o freio.
+  double max_speed_m_s_;
+  double brake_threshold_;
+
   // Últimos valores recebidos dos controles.
   float left_stick_value_{0.0F};
   float r2_value_{1.0F};
