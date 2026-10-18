@@ -12,6 +12,12 @@
     max_speed_m_s: 1.0
     # Fracao do curso do L2 a partir da qual a velocidade e zerada e o freio vai a total.
     brake_threshold: 0.1
+    # Modo bancada (veiculo suspenso): segurar o botao de entrada (X) ou de saida (O)
+    # por bench_hold_time_s. O ESP32 so entra com o veiculo parado e confirma com
+    # vibracao continua (entrou) ou pulsada (saiu). Indices do PS4 no Linux.
+    bench_enter_button: 0
+    bench_exit_button: 1
+    bench_hold_time_s: 5.0
 
 # Nome do nó do pacote joy responsável por ler o gamepad conectado ao sistema.
 /gamepad/joy_node:

@@ -12,6 +12,9 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
   l2_axis_ = this->declare_parameter<int>("l2_axis", 2);
   max_speed_m_s_ = this->declare_parameter<double>("max_speed_m_s", 1.0);
   brake_threshold_ = this->declare_parameter<double>("brake_threshold", 0.1);
+  bench_enter_button_ = this->declare_parameter<int>("bench_enter_button", 0);
+  bench_exit_button_ = this->declare_parameter<int>("bench_exit_button", 1);
+  bench_hold_time_s_ = this->declare_parameter<double>("bench_hold_time_s", 5.0);
 
   joy_subscription_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&GamepadReader::joy_callback, this, std::placeholders::_1));
 
@@ -20,6 +23,13 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
   drive_reference_publisher_ = this->create_publisher<vida_interfaces::msg::DriveReference>("/vida/control/drive/reference", 10);
 
   gamepad_enabled_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/gamepad/enabled", 10);
+
+  bench_mode_request_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/vida/safety/bench_mode_request", 10);
+
+  bench_mode_subscription_ = this->create_subscription<std_msgs::msg::Bool>("/vida/safety/bench_mode", 10, std::bind(&GamepadReader::bench_mode_callback, this, std::placeholders::_1));
+
+  // Vibracao pelo joy_node (namespace /gamepad).
+  rumble_publisher_ = this->create_publisher<sensor_msgs::msg::JoyFeedback>("joy/set_feedback", 10);
 
   reference_timer_ = this->create_wall_timer(std::chrono::milliseconds(40), std::bind(&GamepadReader::publish_references, this));
 
@@ -41,6 +51,7 @@ void GamepadReader::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
   left_stick_value_ = std::clamp(msg->axes[left_stick_axis_], -1.0F, 1.0F);
   r2_value_ = std::clamp(msg->axes[r2_axis_], -1.0F, 1.0F);
   l2_value_ = std::clamp(msg->axes[l2_axis_], -1.0F, 1.0F);
+  buttons_ = msg->buttons;
   last_joy_message_time_ = std::chrono::steady_clock::now();  
   joy_message_received_ = true;
   enabled_ = true;
@@ -89,6 +100,105 @@ void GamepadReader::publish_references()
   steering_reference_publisher_->publish(steering_reference);
   drive_reference_publisher_->publish(drive_reference);
   gamepad_enabled_publisher_->publish(enabled_msg);
+
+  update_bench_request(now);
+  update_rumble(now);
+}
+
+void GamepadReader::update_bench_request(std::chrono::steady_clock::time_point now)
+{
+  // Sem gamepad por mais de 1 s o pedido volta ao modo normal.
+  constexpr auto bench_joy_timeout = std::chrono::seconds(1);
+  if (!joy_message_received_ || now - last_joy_message_time_ > bench_joy_timeout) {
+    buttons_.clear();
+    if (bench_requested_) {
+      RCLCPP_WARN(this->get_logger(), "Gamepad perdido: pedido de modo bancada cancelado");
+    }
+    bench_requested_ = false;
+  }
+
+  const auto pressed = [this](int button) {
+    return button >= 0 && static_cast<std::size_t>(button) < buttons_.size() &&
+           buttons_[button] != 0;
+  };
+  const auto held = [&](bool is_pressed, std::optional<std::chrono::steady_clock::time_point> & since) {
+    if (!is_pressed) {
+      since.reset();
+      return false;
+    }
+    if (!since) {
+      since = now;
+    }
+    return std::chrono::duration<double>(now - *since).count() >= bench_hold_time_s_;
+  };
+
+  const bool enter_held = held(pressed(bench_enter_button_), enter_pressed_since_);
+  const bool exit_held = held(pressed(bench_exit_button_), exit_pressed_since_);
+
+  if (enter_held && !exit_held && !bench_requested_) {
+    bench_requested_ = true;
+    RCLCPP_WARN(this->get_logger(), "Modo bancada PEDIDO (o ESP32 so entra com o veiculo parado)");
+  } else if (exit_held && bench_requested_) {
+    bench_requested_ = false;
+    RCLCPP_WARN(this->get_logger(), "Modo normal pedido");
+  }
+
+  std_msgs::msg::Bool request;
+  request.data = bench_requested_;
+  bench_mode_request_publisher_->publish(request);
+}
+
+void GamepadReader::bench_mode_callback(const std_msgs::msg::Bool::SharedPtr msg)
+{
+  // O primeiro valor recebido so registra o estado, sem vibrar.
+  if (bench_mode_active_ && *bench_mode_active_ != msg->data) {
+    using std::chrono::milliseconds;
+    if (msg->data) {
+      // Entrou: vibracao continua.
+      rumble_pattern_ = {{milliseconds(1500), 1.0F}, {milliseconds(0), 0.0F}};
+      RCLCPP_WARN(this->get_logger(), "ESP32 em MODO BANCADA");
+    } else {
+      // Saiu: tres pulsos.
+      rumble_pattern_ = {
+        {milliseconds(200), 1.0F}, {milliseconds(200), 0.0F},
+        {milliseconds(200), 1.0F}, {milliseconds(200), 0.0F},
+        {milliseconds(200), 1.0F}, {milliseconds(0), 0.0F}};
+      RCLCPP_WARN(this->get_logger(), "ESP32 em modo normal");
+    }
+    rumble_step_ = 0;
+    rumble_step_started_ = std::chrono::steady_clock::now();
+  }
+  bench_mode_active_ = msg->data;
+}
+
+void GamepadReader::update_rumble(std::chrono::steady_clock::time_point now)
+{
+  if (rumble_step_ >= rumble_pattern_.size()) {
+    return;
+  }
+
+  // Avanca os passos cuja duracao ja terminou.
+  while (rumble_step_ < rumble_pattern_.size() &&
+         now - rumble_step_started_ >= rumble_pattern_[rumble_step_].first &&
+         rumble_pattern_[rumble_step_].first.count() > 0) {
+    rumble_step_started_ += rumble_pattern_[rumble_step_].first;
+    ++rumble_step_;
+  }
+
+  sensor_msgs::msg::JoyFeedback feedback;
+  feedback.type = sensor_msgs::msg::JoyFeedback::TYPE_RUMBLE;
+  feedback.id = 0;
+  feedback.intensity = rumble_step_ < rumble_pattern_.size()
+                         ? rumble_pattern_[rumble_step_].second
+                         : 0.0F;
+  rumble_publisher_->publish(feedback);
+
+  // Passo de duracao zero encerra o padrao (apos enviar a intensidade final).
+  if (rumble_step_ < rumble_pattern_.size() &&
+      rumble_pattern_[rumble_step_].first.count() == 0) {
+    rumble_pattern_.clear();
+    rumble_step_ = 0;
+  }
 }
 
 int main(int argc, char **argv)
