@@ -27,6 +27,7 @@ setup(
             "path_tools = vida_navigation.path_tools:main",
             "path_publisher = vida_navigation.path_publisher:main",
             "path_recorder = vida_navigation.path_recorder:main",
+            "sim_vehicle = vida_navigation.sim_vehicle:main",
         ],
     },
 )
