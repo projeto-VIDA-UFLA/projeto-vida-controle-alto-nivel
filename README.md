@@ -8,6 +8,25 @@ O notebook recebe `/robot_state/odom` e `/robot_state/status` e chama o serviço
 
 O `setup.sh` continua inicializando submodules, caso o projeto volte a ter algum.
 
+# Navegação (`vida_navigation`)
+Visão geral dos nós por máquina em `docs/arquitetura_navegacao.pdf`.
+
+Caminhos ficam em CSV (latitude/longitude, cabeçalho `# vida_path v1`), em
+`ros_ws/src/vida_navigation/paths/`. Duas origens:
+
+    # desenhado no Google Earth (Salvar lugar como... KML)
+    ros2 run vida_navigation path_tools from-kml pista.kml pista.csv --name pista_ufla
+    # gravado dirigindo com o controle (EKF rodando, RTK FIXED)
+    ros2 run vida_navigation path_recorder --ros-args -p output_file:=volta_bruta.csv
+    ros2 run vida_navigation path_tools from-recording volta_bruta.csv pista.csv
+
+Cada comando valida o caminho (raio mínimo 3,8 m com ±20°, reta inicial de 5 m
+para a manobra de inicialização, lacunas sem FIXED na gravação) e salva um
+gráfico `.png` ao lado. `path_tools validate` e `path_tools compare` (Google x
+gravado) também estão disponíveis. Testes:
+
+    cd ros_ws/src/vida_navigation && python3 -m pytest test
+
 # Instalação CMake
 1- sudo apt update
 2- sudo apt upgrade
