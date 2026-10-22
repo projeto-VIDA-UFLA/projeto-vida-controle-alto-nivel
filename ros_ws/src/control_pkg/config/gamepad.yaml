@@ -18,6 +18,20 @@
     bench_enter_button: 0
     bench_exit_button: 1
     bench_hold_time_s: 5.0
+    # Modo automatico (vida_navigation): segurar triangulo (entrar) ou quadrado
+    # (sair) por auto_hold_time_s. Vibracao: 1 pulso = pedido aceito, 2 pulsos
+    # longos = Stanley no comando, 4 pulsos curtos = de volta ao manual,
+    # continua = aborto (freio total), 6 pulsos rapidos = pedido recusado.
+    auto_enter_button: 2
+    auto_exit_button: 3
+    auto_hold_time_s: 5.0
+    # Sem mensagens do joy_node por mais que isso: referencias zeradas e freio total
+    # (o joy_node republica a autorepeat_rate, 50 Hz).
+    joy_timeout_s: 0.25
+    # Topicos das referencias. Sozinho, o gamepad comanda o ESP32 direto; o launch da
+    # navegacao troca para /gamepad/* e o mode_manager repassa no modo manual.
+    steering_reference_topic: "/vida/control/steering/reference"
+    drive_reference_topic: "/vida/control/drive/reference"
 
 # Nome do nó do pacote joy responsável por ler o gamepad conectado ao sistema.
 /gamepad/joy_node:

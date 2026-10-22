@@ -2,6 +2,7 @@
 #include <functional>
 #include <algorithm>
 #include <memory>
+#include <string>
 
 #include "gamepad_reader.h"
 
@@ -15,12 +16,23 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
   bench_enter_button_ = this->declare_parameter<int>("bench_enter_button", 0);
   bench_exit_button_ = this->declare_parameter<int>("bench_exit_button", 1);
   bench_hold_time_s_ = this->declare_parameter<double>("bench_hold_time_s", 5.0);
+  auto_enter_button_ = this->declare_parameter<int>("auto_enter_button", 2);
+  auto_exit_button_ = this->declare_parameter<int>("auto_exit_button", 3);
+  auto_hold_time_s_ = this->declare_parameter<double>("auto_hold_time_s", 5.0);
+  joy_timeout_ = std::chrono::milliseconds(
+    static_cast<int>(1000.0 * this->declare_parameter<double>("joy_timeout_s", 0.25)));
+  // Sozinho, o gamepad comanda o ESP32 direto. Com a navegacao, publica em
+  // /gamepad/* e o mode_manager escolhe entre ele e o Stanley.
+  const auto steering_topic = this->declare_parameter<std::string>(
+    "steering_reference_topic", "/vida/control/steering/reference");
+  const auto drive_topic = this->declare_parameter<std::string>(
+    "drive_reference_topic", "/vida/control/drive/reference");
 
   joy_subscription_ = this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, std::bind(&GamepadReader::joy_callback, this, std::placeholders::_1));
 
-  steering_reference_publisher_ = this->create_publisher<vida_interfaces::msg::SteeringReference>("/vida/control/steering/reference", 10);
+  steering_reference_publisher_ = this->create_publisher<vida_interfaces::msg::SteeringReference>(steering_topic, 10);
 
-  drive_reference_publisher_ = this->create_publisher<vida_interfaces::msg::DriveReference>("/vida/control/drive/reference", 10);
+  drive_reference_publisher_ = this->create_publisher<vida_interfaces::msg::DriveReference>(drive_topic, 10);
 
   gamepad_enabled_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/gamepad/enabled", 10);
 
@@ -31,9 +43,14 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
   // Vibracao pelo joy_node (namespace /gamepad).
   rumble_publisher_ = this->create_publisher<sensor_msgs::msg::JoyFeedback>("joy/set_feedback", 10);
 
+  auto_request_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/navigation/auto_request", 10);
+
+  navigation_mode_subscription_ = this->create_subscription<vida_interfaces::msg::NavigationMode>("/navigation/mode", 10, std::bind(&GamepadReader::navigation_mode_callback, this, std::placeholders::_1));
+
   reference_timer_ = this->create_wall_timer(std::chrono::milliseconds(40), std::bind(&GamepadReader::publish_references, this));
 
   RCLCPP_INFO(this->get_logger(), "Lendo analogico esquerdo no eixo %d, R2 no eixo %d e L2 no eixo %d", left_stick_axis_, r2_axis_, l2_axis_);
+  RCLCPP_INFO(this->get_logger(), "Referencias em %s e %s", steering_topic.c_str(), drive_topic.c_str());
 }
 
 void GamepadReader::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
@@ -59,10 +76,9 @@ void GamepadReader::joy_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
 
 void GamepadReader::publish_references()
 {
-  constexpr auto joy_timeout = std::chrono::milliseconds(40);
   const auto now = std::chrono::steady_clock::now();
 
-  if (!joy_message_received_ || now - last_joy_message_time_ > joy_timeout) {
+  if (!joy_message_received_ || now - last_joy_message_time_ > joy_timeout_) {
     left_stick_value_ = 0.0F;
     r2_value_ = 1.0F;
     // Sem gamepad o freio vai a total (L2 no fundo = -1).
@@ -102,7 +118,90 @@ void GamepadReader::publish_references()
   gamepad_enabled_publisher_->publish(enabled_msg);
 
   update_bench_request(now);
+  update_auto_request(now);
   update_rumble(now);
+}
+
+void GamepadReader::update_auto_request(std::chrono::steady_clock::time_point now)
+{
+  // buttons_ ja foi limpo por update_bench_request se o gamepad sumiu.
+  const auto pressed = [this](int button) {
+    return button >= 0 && static_cast<std::size_t>(button) < buttons_.size() &&
+           buttons_[button] != 0;
+  };
+  const auto held = [&](bool is_pressed, std::optional<std::chrono::steady_clock::time_point> & since,
+                        bool & sent) {
+    if (!is_pressed) {
+      since.reset();
+      sent = false;
+      return false;
+    }
+    if (!since) {
+      since = now;
+    }
+    if (sent || std::chrono::duration<double>(now - *since).count() < auto_hold_time_s_) {
+      return false;
+    }
+    sent = true;
+    return true;
+  };
+
+  const bool enter = held(pressed(auto_enter_button_), auto_enter_pressed_since_, auto_enter_sent_);
+  const bool exit = held(pressed(auto_exit_button_), auto_exit_pressed_since_, auto_exit_sent_);
+  if (enter == exit) {
+    return;
+  }
+  std_msgs::msg::Bool request;
+  request.data = enter;
+  auto_request_publisher_->publish(request);
+  RCLCPP_WARN(this->get_logger(), enter ? "Modo AUTOMATICO pedido" : "Saida do modo automatico pedida");
+}
+
+void GamepadReader::navigation_mode_callback(const vida_interfaces::msg::NavigationMode::SharedPtr msg)
+{
+  using vida_interfaces::msg::NavigationMode;
+  using std::chrono::milliseconds;
+  // O primeiro valor recebido so registra o estado, sem vibrar.
+  if (navigation_mode_) {
+    const auto & last = *navigation_mode_;
+    if (msg->refused_count != last.refused_count) {
+      // Recusado: seis pulsos rapidos.
+      start_rumble({{milliseconds(100), 1.0F}, {milliseconds(100), 0.0F},
+                    {milliseconds(100), 1.0F}, {milliseconds(100), 0.0F},
+                    {milliseconds(100), 1.0F}, {milliseconds(100), 0.0F},
+                    {milliseconds(100), 1.0F}, {milliseconds(100), 0.0F},
+                    {milliseconds(100), 1.0F}, {milliseconds(100), 0.0F},
+                    {milliseconds(100), 1.0F}, {milliseconds(0), 0.0F}});
+      RCLCPP_ERROR(this->get_logger(), "%s", msg->reason.c_str());
+    } else if (msg->mode != last.mode) {
+      if (msg->mode == NavigationMode::MODE_PREPARING) {
+        // Pedido aceito: um pulso curto.
+        start_rumble({{milliseconds(300), 1.0F}, {milliseconds(0), 0.0F}});
+      } else if (msg->mode == NavigationMode::MODE_AUTOMATIC) {
+        // Stanley no comando: dois pulsos longos.
+        start_rumble({{milliseconds(500), 1.0F}, {milliseconds(300), 0.0F},
+                      {milliseconds(500), 1.0F}, {milliseconds(0), 0.0F}});
+      } else if (msg->mode == NavigationMode::MODE_STOPPING && msg->aborted) {
+        // Aborto: vibracao continua longa.
+        start_rumble({{milliseconds(2000), 1.0F}, {milliseconds(0), 0.0F}});
+      } else if (msg->mode == NavigationMode::MODE_MANUAL) {
+        // De volta ao manual: quatro pulsos curtos.
+        start_rumble({{milliseconds(150), 1.0F}, {milliseconds(150), 0.0F},
+                      {milliseconds(150), 1.0F}, {milliseconds(150), 0.0F},
+                      {milliseconds(150), 1.0F}, {milliseconds(150), 0.0F},
+                      {milliseconds(150), 1.0F}, {milliseconds(0), 0.0F}});
+      }
+      RCLCPP_WARN(this->get_logger(), "Navegacao: modo %u (%s)", msg->mode, msg->reason.c_str());
+    }
+  }
+  navigation_mode_ = *msg;
+}
+
+void GamepadReader::start_rumble(std::vector<std::pair<std::chrono::milliseconds, float>> pattern)
+{
+  rumble_pattern_ = std::move(pattern);
+  rumble_step_ = 0;
+  rumble_step_started_ = std::chrono::steady_clock::now();
 }
 
 void GamepadReader::update_bench_request(std::chrono::steady_clock::time_point now)

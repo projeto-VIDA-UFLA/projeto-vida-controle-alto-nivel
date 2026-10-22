@@ -12,6 +12,7 @@
 #include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "vida_interfaces/msg/drive_reference.hpp"
+#include "vida_interfaces/msg/navigation_mode.hpp"
 #include "vida_interfaces/msg/steering_reference.hpp"
 
 using namespace std;
@@ -39,6 +40,13 @@ private:
   void bench_mode_callback(const std_msgs::msg::Bool::SharedPtr msg);
   void update_rumble(std::chrono::steady_clock::time_point now);
 
+  // Modo automatico (vida_navigation/mode_manager): segurar o botao de entrada
+  // (triangulo) ou de saida (quadrado) por auto_hold_time_s publica um pedido
+  // em /navigation/auto_request. Vibra conforme o modo confirmado.
+  void update_auto_request(std::chrono::steady_clock::time_point now);
+  void navigation_mode_callback(const vida_interfaces::msg::NavigationMode::SharedPtr msg);
+  void start_rumble(std::vector<std::pair<std::chrono::milliseconds, float>> pattern);
+
   // Índices dos eixos utilizados na mensagem Joy.
   int left_stick_axis_;
   int r2_axis_;
@@ -47,6 +55,9 @@ private:
   // Velocidade com R2 no fundo e fracao do L2 que aciona o freio.
   double max_speed_m_s_;
   double brake_threshold_;
+
+  // Sem mensagem do joy_node por mais que isso: referencias zeradas e freio total.
+  std::chrono::milliseconds joy_timeout_;
 
   // Modo bancada: botoes, tempo segurando e estado.
   int bench_enter_button_;
@@ -57,6 +68,17 @@ private:
   std::optional<std::chrono::steady_clock::time_point> exit_pressed_since_;
   bool bench_requested_{false};
   std::optional<bool> bench_mode_active_;  // ultimo modo efetivo do ESP32
+
+  // Modo automatico: botoes, tempo segurando e ultimo modo recebido. O pedido
+  // e enviado uma vez por toque longo (soltar o botao rearma).
+  int auto_enter_button_;
+  int auto_exit_button_;
+  double auto_hold_time_s_;
+  std::optional<std::chrono::steady_clock::time_point> auto_enter_pressed_since_;
+  std::optional<std::chrono::steady_clock::time_point> auto_exit_pressed_since_;
+  bool auto_enter_sent_{false};
+  bool auto_exit_sent_{false};
+  std::optional<vida_interfaces::msg::NavigationMode> navigation_mode_;
 
   // Padrao de vibracao em andamento: (duracao, intensidade) em sequencia.
   std::vector<std::pair<std::chrono::milliseconds, float>> rumble_pattern_;
@@ -83,6 +105,8 @@ private:
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr bench_mode_request_publisher_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr bench_mode_subscription_;
   rclcpp::Publisher<sensor_msgs::msg::JoyFeedback>::SharedPtr rumble_publisher_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr auto_request_publisher_;
+  rclcpp::Subscription<vida_interfaces::msg::NavigationMode>::SharedPtr navigation_mode_subscription_;
 
   // Define a frequência de publicação das referências.
   rclcpp::TimerBase::SharedPtr reference_timer_;

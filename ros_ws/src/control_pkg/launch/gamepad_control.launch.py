@@ -14,11 +14,18 @@ def generate_launch_description():
 
     config = LaunchConfiguration("config")
     device_id = LaunchConfiguration("device_id")
+    steering_topic = LaunchConfiguration("steering_reference_topic")
+    drive_topic = LaunchConfiguration("drive_reference_topic")
 
     return LaunchDescription(
         [
             DeclareLaunchArgument("config", default_value=default_config),
             DeclareLaunchArgument("device_id", default_value="0"),
+            # A navegacao (vida_navigation navigation.launch.py) passa /gamepad/*.
+            DeclareLaunchArgument("steering_reference_topic",
+                                  default_value="/vida/control/steering/reference"),
+            DeclareLaunchArgument("drive_reference_topic",
+                                  default_value="/vida/control/drive/reference"),
             Node(
                 package="joy",
                 executable="joy_node",
@@ -32,7 +39,8 @@ def generate_launch_description():
                 executable="gamepad_reader",
                 name="control",
                 namespace="gamepad",
-                parameters=[config],
+                parameters=[config, {"steering_reference_topic": steering_topic,
+                                     "drive_reference_topic": drive_topic}],
                 output="screen",
             ),
         ]
