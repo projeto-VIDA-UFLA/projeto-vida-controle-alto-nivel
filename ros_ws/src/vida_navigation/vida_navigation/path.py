@@ -155,7 +155,7 @@ class Projection:
     x: float                 # ponto projetado
     y: float
     s: float                 # distancia ao longo do caminho (m)
-    heading: float           # direcao do caminho no ponto (rad)
+    heading: float           # direcao do caminho no ponto (rad), interpolada entre os vertices
     curvature: float         # 1/m, positiva para a esquerda
     cross_track: float       # distancia lateral, positiva com o veiculo a ESQUERDA do caminho
     distance_to_end: float   # metros ate o fim (caminho aberto) ou ate o ponto de partida (fechado)
@@ -236,7 +236,10 @@ class LocalPath:
         s = float(self.s[i] + frac * self.segment_length[i])
         j = (i + 1) % self._n if self.closed else min(i + 1, self._n - 1)
         curvature = float((1 - frac) * self.curvature[i] + frac * self.curvature[j])
-        return Projection(i, frac, float(qx[best]), float(qy[best]), s, seg_heading, curvature,
+        # Rumo continuo: o do segmento muda em degrau a cada vertice (3 graus a cada 0,25 m
+        # numa curva de 5 m) e faria o Stanley trepidar.
+        heading = float(wrap_angle(self.heading[i] + frac * wrap_angle(self.heading[j] - self.heading[i])))
+        return Projection(i, frac, float(qx[best]), float(qy[best]), s, heading, curvature,
                           float(cross), float(self.length - s))
 
     def point_ahead(self, index, distance_m):
