@@ -1,0 +1,30 @@
+# Parametros da navegacao (notebook). Os valores vieram do simulador
+# (closed_loop / simulation.launch.py) e devem ser revistos na pista.
+stanley:
+  ros__parameters:
+    wheelbase_m: 1.125          # geometrico; o veiculo se comporta como 1,38 m (teste de 12/10)
+    gain_k: 2.0                 # erro lateral: atan(k e / (k_s + v))
+    softening_m_s: 1.0
+    feedforward_gain: 1.0       # atan(L kappa)
+    max_steering_deg: 20.0      # = STEERING_REFERENCE_MAX_DEG do firmware
+    steering_rate_deg_s: 40.0
+    speed_m_s: 1.0
+    end_decel_m_s2: 0.3
+    odom_timeout_s: 0.2
+
+mode_manager:
+  ros__parameters:
+    wheelbase_m: 1.125
+    start_max_distance_m: 3.0       # antena ate o inicio do caminho para aceitar o pedido
+    max_enable_cross_track_m: 1.0   # depois da manobra
+    max_heading_error_deg: 30.0
+    max_cross_track_m: 1.5          # aborto durante o automatico
+    maneuver_speed_m_s: 0.5
+    maneuver_max_distance_m: 6.0
+    maneuver_timeout_s: 15.0
+    preparing_timeout_s: 5.0
+    calibrating_timeout_s: 15.0
+    stopping_timeout_s: 15.0
+    steering_aligned_deg: 1.5
+    max_correction_age_s: 5.0
+    gnss_timeout_s: 2.5

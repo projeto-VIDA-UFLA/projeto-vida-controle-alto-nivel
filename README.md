@@ -27,6 +27,43 @@ gravado) também estão disponíveis. Testes:
 
     cd ros_ws/src/vida_navigation && python3 -m pytest test
 
+## Modo automático (Stanley)
+
+    ros2 launch vida_navigation navigation.launch.py path_file:=/caminho/pista.csv
+
+Sobe o gamepad (publicando em `/gamepad/*`), o `mode_manager` (único que
+publica `/vida/control/*/reference`), o `stanley` e o `path_publisher`.
+Parâmetros em `ros_ws/src/vida_navigation/config/navigation.yaml`.
+
+| Gamepad (5 s) | Ação | Vibração |
+|---|---|---|
+| △ | entra no automático | 1 pulso: aceito; 2 longos: Stanley no comando |
+| □ | sai do automático (para) | 4 curtos: de volta ao manual |
+| L2 | aborta e freia (qualquer momento) | contínua: aborto |
+| X / O | modo bancada (ESP32) | contínua / 3 pulsos |
+
+Pedido recusado: 6 pulsos rápidos (motivo no log e em `/navigation/mode`).
+Para entrar: parado, ESP32 liberando, GPS com correções RTK e antena a até
+3 m do início do caminho. Sequência: alinha as rodas, reinicia o EKF (origem
+e bias, parado), anda reto a 0,5 m/s até o heading pelo GPS (RTK FIXED),
+confere o alinhamento (< 1 m, < 30°) e segue uma volta a 1 m/s. Ao voltar ao
+manual, a tração só volta ao gamepad depois de soltar o R2.
+
+## Simulação
+
+    ros2 launch vida_navigation simulation.launch.py              # caminho de exemplo
+    ros2 run vida_navigation sim_scenarios volta                  # operador simulado
+
+O `sim_vehicle` substitui ESP32 + GPS + EKF com os mesmos tópicos (entre-eixos
+efetivo de 1,38 m, erro de 7% dos encoders, GPS a 1 Hz). Cenários:
+`volta`, `float`, `l2`, `quadrado`, `rtk_perdido`, `gps_perdido`,
+`esp_bloqueio`, `longe` (com `start_back_m:=6.0`) e `desalinhado` (com
+`start_yaw_deg:=40.0`). Com `gamepad:=true` dá para dirigir o simulador.
+
+Pendências para a pista: ganho `gain_k` validado só no simulador; GPS a
+1 Hz gera degraus de até 0,35 m na posição (subir para 5-10 Hz no ZED-F9R
+e calibrar a escala dos encoders, ver TODO do firmware).
+
 # Instalação CMake
 1- sudo apt update
 2- sudo apt upgrade

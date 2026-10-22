@@ -29,6 +29,8 @@ setup(
             "path_recorder = vida_navigation.path_recorder:main",
             "sim_vehicle = vida_navigation.sim_vehicle:main",
             "stanley = vida_navigation.stanley:main",
+            "mode_manager = vida_navigation.mode_manager:main",
+            "sim_scenarios = vida_navigation.sim_scenarios:main",
         ],
     },
 )

@@ -5,7 +5,7 @@
 Assina as referencias (/vida/control/*/reference) e o enable logico e publica
 o que o Stanley e o mode_manager leem no veiculo real:
     /robot_state/odom, /robot_state/status   (EKF)
-    /vida/sensors/gps/status                 (receptor)
+    /vida/sensors/gps/{fix,status}           (receptor, antena no eixo traseiro)
     /vida/safety/status, /vida/sensors/steering (ESP32)
     /sim/ground_truth                        (pose real, so no simulador)
 e atende /robot_state_ekf_node/reset como o EKF: origem apos 3 fixes parado,
@@ -21,6 +21,7 @@ import numpy as np
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_srvs.srv import Trigger
 from vida_interfaces.msg import (DriveReference, EkfStatus, GnssStatus, LogicalEnable,
                                  SafetyStatus, Steering, SteeringReference)
@@ -176,6 +177,7 @@ class SimVehicle(Node):
         self.truth_pub = self.create_publisher(Odometry, "/sim/ground_truth", 10)
         self.status_pub = self.create_publisher(EkfStatus, "/robot_state/status", 10)
         self.gnss_pub = self.create_publisher(GnssStatus, "/vida/sensors/gps/status", 10)
+        self.fix_pub = self.create_publisher(NavSatFix, "/vida/sensors/gps/fix", 10)
         self.safety_pub = self.create_publisher(SafetyStatus, "/vida/safety/status", 10)
         self.steering_pub = self.create_publisher(Steering, "/vida/sensors/steering", 10)
         self.create_service(Trigger, "/robot_state_ekf_node/reset", self.on_reset)
@@ -253,6 +255,18 @@ class SimVehicle(Node):
         self.truth_pub.publish(self._odom(tx, ty, s.yaw))
 
     def publish_gnss(self, rtk, alive):
+        fix = NavSatFix()
+        fix.header.stamp = self.get_clock().now().to_msg()
+        fix.header.frame_id = "gps"
+        fix.status.status = NavSatStatus.STATUS_GBAS_FIX if rtk != GnssStatus.RTK_NONE else NavSatStatus.STATUS_FIX
+        fix.status.service = NavSatStatus.SERVICE_GPS
+        lat, lon = to_geodetic(self.world, *self.ekf.fix_measured)
+        fix.latitude, fix.longitude, fix.altitude = float(lat), float(lon), 900.0
+        sigma = {GnssStatus.RTK_FIXED: 0.014, GnssStatus.RTK_FLOAT: 0.25}.get(rtk, 1.5)
+        fix.position_covariance = [sigma ** 2, 0.0, 0.0, 0.0, sigma ** 2, 0.0, 0.0, 0.0, 4 * sigma ** 2]
+        fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
+        self.fix_pub.publish(fix)
+
         msg = GnssStatus()
         msg.timestamp = self.get_clock().now().to_msg()
         msg.fix_type = 3
