@@ -19,6 +19,8 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
   auto_enter_button_ = this->declare_parameter<int>("auto_enter_button", 2);
   auto_exit_button_ = this->declare_parameter<int>("auto_exit_button", 3);
   auto_hold_time_s_ = this->declare_parameter<double>("auto_hold_time_s", 5.0);
+  maneuver_button_ = this->declare_parameter<int>("maneuver_button", 4);
+  maneuver_hold_time_s_ = this->declare_parameter<double>("maneuver_hold_time_s", 3.0);
   joy_timeout_ = std::chrono::milliseconds(
     static_cast<int>(1000.0 * this->declare_parameter<double>("joy_timeout_s", 0.25)));
   // Sozinho, o gamepad comanda o ESP32 direto. Com a navegacao, publica em
@@ -46,6 +48,8 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
   auto_request_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/navigation/auto_request", 10);
 
   navigation_mode_subscription_ = this->create_subscription<vida_interfaces::msg::NavigationMode>("/navigation/mode", 10, std::bind(&GamepadReader::navigation_mode_callback, this, std::placeholders::_1));
+
+  maneuver_subscription_ = this->create_subscription<std_msgs::msg::Bool>("/vida/safety/maneuver", 10, std::bind(&GamepadReader::maneuver_callback, this, std::placeholders::_1));
 
   reference_timer_ = this->create_wall_timer(std::chrono::milliseconds(40), std::bind(&GamepadReader::publish_references, this));
 
@@ -102,6 +106,7 @@ void GamepadReader::publish_references()
   const float r2_pressed = std::clamp(0.5F * (1.0F - r2_value_), 0.0F, 1.0F);
   const float l2_pressed = std::clamp(0.5F * (1.0F - l2_value_), 0.0F, 1.0F);
   const bool brake_requested = l2_pressed > brake_threshold_;
+  update_maneuver_request(now, brake_requested || r2_pressed > brake_threshold_);
 
   // R2: velocidade de 0 a max_speed_m_s; o ESP32 controla tracao e freio.
   // L2: zera a velocidade e pede freio total (o ESP32 trata brake_command
@@ -112,6 +117,11 @@ void GamepadReader::publish_references()
     brake_requested ? 0.0F : static_cast<float>(max_speed_m_s_) * r2_pressed;
   drive_reference.acceleration_m_s2 = 0.0F;  // rampa padrao do ESP32
   drive_reference.brake_command = brake_requested ? 1.0F : 0.0F;
+  if (maneuver_requested_) {
+    // Freio solto a pedido (o ESP32 bloqueia a tracao nesse modo).
+    drive_reference.velocity_m_s = 0.0F;
+    drive_reference.brake_command = -1.0F;
+  }
 
   steering_reference_publisher_->publish(steering_reference);
   drive_reference_publisher_->publish(drive_reference);
@@ -195,6 +205,58 @@ void GamepadReader::navigation_mode_callback(const vida_interfaces::msg::Navigat
     }
   }
   navigation_mode_ = *msg;
+}
+
+void GamepadReader::update_maneuver_request(
+  std::chrono::steady_clock::time_point now, bool r2_or_l2_pressed)
+{
+  const bool joy_fresh = joy_message_received_ && now - last_joy_message_time_ <= joy_timeout_;
+  const bool pressed = joy_fresh && maneuver_button_ >= 0 &&
+                       static_cast<std::size_t>(maneuver_button_) < buttons_.size() &&
+                       buttons_[maneuver_button_] != 0;
+
+  if (maneuver_requested_ && (r2_or_l2_pressed || !joy_fresh)) {
+    maneuver_requested_ = false;
+    RCLCPP_WARN(this->get_logger(), "Modo manobra cancelado (R2/L2 ou gamepad perdido)");
+  }
+
+  if (!pressed) {
+    maneuver_pressed_since_.reset();
+    maneuver_toggle_sent_ = false;
+    return;
+  }
+  if (!maneuver_pressed_since_) {
+    maneuver_pressed_since_ = now;
+  }
+  if (maneuver_toggle_sent_ ||
+      std::chrono::duration<double>(now - *maneuver_pressed_since_).count() < maneuver_hold_time_s_) {
+    return;
+  }
+  maneuver_toggle_sent_ = true;
+  maneuver_requested_ = !maneuver_requested_;
+  RCLCPP_WARN(this->get_logger(), maneuver_requested_
+                                    ? "Modo manobra PEDIDO (freio solto; o ESP32 so entra parado)"
+                                    : "Modo manobra desligado pelo gamepad");
+}
+
+void GamepadReader::maneuver_callback(const std_msgs::msg::Bool::SharedPtr msg)
+{
+  using std::chrono::milliseconds;
+  // O primeiro valor recebido so registra o estado, sem vibrar.
+  if (maneuver_active_ && *maneuver_active_ != msg->data) {
+    if (msg->data) {
+      // Freio solto: dois pulsos curtos.
+      start_rumble({{milliseconds(200), 1.0F}, {milliseconds(150), 0.0F},
+                    {milliseconds(200), 1.0F}, {milliseconds(0), 0.0F}});
+      RCLCPP_WARN(this->get_logger(), "ESP32 em MODO MANOBRA: freio solto");
+    } else {
+      // Freio de volta: um pulso longo.
+      start_rumble({{milliseconds(800), 1.0F}, {milliseconds(0), 0.0F}});
+      RCLCPP_WARN(this->get_logger(), "ESP32 saiu do modo manobra: freio aplicado");
+      maneuver_requested_ = false;
+    }
+  }
+  maneuver_active_ = msg->data;
 }
 
 void GamepadReader::start_rumble(std::vector<std::pair<std::chrono::milliseconds, float>> pattern)

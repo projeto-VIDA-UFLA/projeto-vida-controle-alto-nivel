@@ -47,6 +47,14 @@ private:
   void navigation_mode_callback(const vida_interfaces::msg::NavigationMode::SharedPtr msg);
   void start_rumble(std::vector<std::pair<std::chrono::milliseconds, float>> pattern);
 
+  // Modo manobra (freio solto para empurrar o veiculo): segurar o botao (L1)
+  // por maneuver_hold_time_s liga/desliga o pedido; R2 ou L2 cancelam. O
+  // pedido vai em DriveReference.brake_command = -1 e o ESP32 decide se entra
+  // (parado, gamepad vivo; ver MANEUVER_* no firmware).
+  void update_maneuver_request(std::chrono::steady_clock::time_point now,
+                               bool r2_or_l2_pressed);
+  void maneuver_callback(const std_msgs::msg::Bool::SharedPtr msg);
+
   // Índices dos eixos utilizados na mensagem Joy.
   int left_stick_axis_;
   int r2_axis_;
@@ -80,6 +88,14 @@ private:
   bool auto_exit_sent_{false};
   std::optional<vida_interfaces::msg::NavigationMode> navigation_mode_;
 
+  // Modo manobra.
+  int maneuver_button_;
+  double maneuver_hold_time_s_;
+  std::optional<std::chrono::steady_clock::time_point> maneuver_pressed_since_;
+  bool maneuver_toggle_sent_{false};
+  bool maneuver_requested_{false};
+  std::optional<bool> maneuver_active_;  // ultimo estado confirmado pelo ESP32
+
   // Padrao de vibracao em andamento: (duracao, intensidade) em sequencia.
   std::vector<std::pair<std::chrono::milliseconds, float>> rumble_pattern_;
   std::size_t rumble_step_{0};
@@ -107,6 +123,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::JoyFeedback>::SharedPtr rumble_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr auto_request_publisher_;
   rclcpp::Subscription<vida_interfaces::msg::NavigationMode>::SharedPtr navigation_mode_subscription_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr maneuver_subscription_;
 
   // Define a frequência de publicação das referências.
   rclcpp::TimerBase::SharedPtr reference_timer_;

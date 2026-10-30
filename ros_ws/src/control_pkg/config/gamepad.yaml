@@ -9,8 +9,8 @@
     # Índice do eixo do gatilho L2 na mensagem Joy, usado como freio (comum em controles PS4 no Linux).
     l2_axis: 2
     # Velocidade de referencia (m/s) com o R2 no fundo. O ESP32 limita a
-    # DRIVE_MAX_TARGET_SPEED_M_S (2 m/s nos primeiros ensaios no chao, 30/10).
-    max_speed_m_s: 2.0
+    # DRIVE_MAX_TARGET_SPEED_M_S (2,5 m/s nos ensaios no chao, 30/10).
+    max_speed_m_s: 2.5
     # Fracao do curso do L2 a partir da qual a velocidade e zerada e o freio vai a total.
     brake_threshold: 0.1
     # Modo bancada (veiculo suspenso): segurar o botao de entrada (X) ou de saida (O)
@@ -26,6 +26,13 @@
     auto_enter_button: 2
     auto_exit_button: 3
     auto_hold_time_s: 5.0
+    # Modo manobra (freio solto para empurrar o veiculo, inclusive com o enable
+    # fisico desligado): segurar L1 por maneuver_hold_time_s liga/desliga; R2 ou
+    # L2 cancelam. O ESP32 so entra parado e cancela se o veiculo passar de
+    # 1 m/s ou o enable fisico for desligado. Vibracao: 2 pulsos curtos = freio
+    # solto; 1 pulso longo = freio de volta.
+    maneuver_button: 4
+    maneuver_hold_time_s: 3.0
     # Sem mensagens do joy_node por mais que isso: referencias zeradas e freio total
     # (o joy_node republica a autorepeat_rate, 50 Hz).
     joy_timeout_s: 0.25
