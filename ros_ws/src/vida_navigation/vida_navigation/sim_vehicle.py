@@ -140,7 +140,7 @@ class SimVehicle(Node):
             # que a geometria de 1,125 m preve); o Stanley usa 1,125 m para a posicao
             # do eixo dianteiro e 1,42 m no feedforward.
             wheelbase_m=dp("wheelbase_m", 1.42).value,
-            steering_rate_max_deg_s=dp("steering_rate_max_deg_s", 30.0).value,
+            steering_rate_max_deg_s=dp("steering_rate_max_deg_s", 60.0).value,
             drive_time_constant_s=dp("drive_time_constant_s", 1.2).value)
 
         # Pose inicial: no inicio do caminho, com deslocamentos para testar a entrada.

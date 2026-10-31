@@ -21,6 +21,7 @@ import math
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool, Trigger
@@ -76,6 +77,8 @@ class ModeManager(Node):
         self.steering_aligned_deg = dp("steering_aligned_deg", 1.5).value
         self.max_correction_age = dp("max_correction_age_s", 5.0).value
         self.gnss_timeout = dp("gnss_timeout_s", 2.5).value
+        self.esp_block_tolerance = dp("esp_block_tolerance_s", 0.3).value
+        self.blocked_since = None
         self.reference_timeout = 0.3      # gamepad, Stanley
         self.status_timeout = 0.5         # ESP32, EKF
         self.odom_timeout = 0.3
@@ -99,7 +102,9 @@ class ModeManager(Node):
         sub(EkfStatus, "/robot_state/status", self.ekf_status, 10)
         sub(Odometry, "/robot_state/odom", self.odom, 10)
         sub(GnssStatus, "/vida/sensors/gps/status", self.gnss, 10)
-        sub(NavSatFix, "/vida/sensors/gps/fix", self.fix, 10)
+        # O driver do ZED-F9R publica o fix como best-effort (SensorDataQoS): uma
+        # assinatura reliable nao recebe nada dele (30/10: "sem posicao do GPS").
+        sub(NavSatFix, "/vida/sensors/gps/fix", self.fix, qos_profile_sensor_data)
         sub(Steering, "/vida/sensors/steering", self.steering, 10)
         sub(StanleyStatus, "/navigation/stanley/status", self.stanley_status, 10)
         sub(SteeringReference, "/navigation/stanley/steering", self.stanley_steering, 10)
@@ -229,8 +234,15 @@ class ModeManager(Node):
             return "gamepad perdido"
         if not self.safety.fresh(self.status_timeout):
             return "ESP32 sem status"
-        if not self.safety.msg.motion_permitted and self.in_mode_for() > 0.5:
-            return f"ESP32 bloqueando o movimento (flags {self.safety.msg.inhibit_flags})"
+        # Um bloqueio curto do ESP32 (30/10: 60 ms de enable "atrasado") nao
+        # aborta; so se persistir por esp_block_tolerance_s.
+        if self.safety.msg.motion_permitted or self.in_mode_for() <= 0.5:
+            self.blocked_since = None
+        else:
+            if self.blocked_since is None:
+                self.blocked_since = self.now()
+            if self.now() - self.blocked_since > self.esp_block_tolerance:
+                return f"ESP32 bloqueando o movimento (flags {self.safety.msg.inhibit_flags})"
         if not self.ekf_status.fresh(self.status_timeout):
             return "EKF sem status"
         return self.gnss_problem()

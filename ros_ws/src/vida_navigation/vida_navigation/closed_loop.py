@@ -98,7 +98,8 @@ def run(path, start_back_m=0.0, start_left_m=0.0, start_yaw_deg=0.0, stanley=Non
         if t >= next_control:                       # odom a 50 Hz
             next_control += 0.02
             x, y, yaw = ekf.estimate(s)
-            out = controller.update(x, y, yaw, s.speed * (1 + encoder_scale_error), 0.02)
+            out = controller.update(x, y, yaw, s.speed * (1 + encoder_scale_error), 0.02,
+                                    yaw_rate=model.yaw_rate)
             c.steering_deg, c.speed_m_s = out.steering_command_deg, out.speed_command_m_s
             c.brake = out.brake_command
             c.steering_time = c.drive_time = t

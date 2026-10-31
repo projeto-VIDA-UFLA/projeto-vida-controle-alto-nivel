@@ -29,8 +29,12 @@ class VehicleParams:
     steering_reference_max_deg: float = 20.0
     steering_reference_rate_deg_s: float = 40.0
     steering_max_deg: float = 25.0
-    steering_rate_max_deg_s: float = 30.0
-    steering_gain_1_s: float = 6.0            # taxa = ganho * erro, ate a taxa maxima
+    # Esterçamento ajustado ao 1o Stanley no chao (30/10, rms 2,2 graus): atraso
+    # puro + 2a ordem subamortecida (passa do comando, como o real) + taxa max.
+    steering_delay_s: float = 0.15
+    steering_wn_rad_s: float = 6.0
+    steering_zeta: float = 0.3
+    steering_rate_max_deg_s: float = 60.0
     steering_deadband_enter_deg: float = 0.4
     steering_deadband_exit_deg: float = 1.2
     drive_default_accel_m_s2: float = 0.4
@@ -71,6 +75,8 @@ class VehicleModel:
     injected_inhibit: int = 0
     _speed_reference: float = 0.0     # apos a rampa
     _steering_reference: float = 0.0  # apos o limite de taxa
+    _steering_rate: float = 0.0       # graus/s do mecanismo
+    _steering_queue: list = field(default_factory=list)   # (t, referencia) para o atraso
     _in_deadband: bool = True
 
     INHIBIT_LOGICAL_ENABLE_FALSE = 4
@@ -93,7 +99,13 @@ class VehicleModel:
 
         # Esterçamento: bloqueado = motor parado (a direcao fica onde esta).
         if permitted:
-            requested = float(np.clip(c.steering_deg, -p.steering_reference_max_deg,
+            # Atraso puro da referencia (ROS + agente + firmware).
+            self._steering_queue.append((now, c.steering_deg))
+            while len(self._steering_queue) > 1 and self._steering_queue[1][0] <= now - p.steering_delay_s:
+                self._steering_queue.pop(0)
+            delayed = self._steering_queue[0][1] if self._steering_queue[0][0] <= now - p.steering_delay_s \
+                else self._steering_reference
+            requested = float(np.clip(delayed, -p.steering_reference_max_deg,
                                       p.steering_reference_max_deg))
             max_step = p.steering_reference_rate_deg_s * dt
             self._steering_reference += float(np.clip(requested - self._steering_reference,
@@ -104,11 +116,16 @@ class VehicleModel:
                 self._in_deadband = False
             elif not self._in_deadband and abs(error) < p.steering_deadband_enter_deg:
                 self._in_deadband = True
-            if not self._in_deadband:
-                rate = float(np.clip(p.steering_gain_1_s * error, -p.steering_rate_max_deg_s,
-                                     p.steering_rate_max_deg_s))
-                s.steering_deg = float(np.clip(s.steering_deg + rate * dt, -p.steering_max_deg,
-                                               p.steering_max_deg))
+            accel = 0.0 if self._in_deadband else p.steering_wn_rad_s ** 2 * error
+            accel -= 2.0 * p.steering_zeta * p.steering_wn_rad_s * self._steering_rate
+            self._steering_rate = float(np.clip(self._steering_rate + accel * dt,
+                                                -p.steering_rate_max_deg_s, p.steering_rate_max_deg_s))
+            if self._in_deadband and abs(self._steering_rate) < 5.0:
+                self._steering_rate *= 0.9          # parado pelo atrito dentro da zona morta
+            s.steering_deg = float(np.clip(s.steering_deg + self._steering_rate * dt,
+                                           -p.steering_max_deg, p.steering_max_deg))
+        else:
+            self._steering_rate = 0.0
 
         # Velocidade: rampa da referencia, malha fechada de 1a ordem, freio.
         if permitted:

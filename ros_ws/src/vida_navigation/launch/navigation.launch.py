@@ -31,7 +31,11 @@ def navigation_nodes(path_file, config):
 def generate_launch_description():
     share = Path(get_package_share_directory("vida_navigation"))
     path_file = LaunchConfiguration("path_file")
-    config = LaunchConfiguration("config")
+    # "nav_config", e nao "config": argumentos de launch sao compartilhados com os
+    # launches incluidos, e o do gamepad usa "config" para o gamepad.yaml (com o
+    # mesmo nome, o gamepad recebia o navigation.yaml e caia nos padroes do
+    # codigo, 1 m/s; ensaio de 30/10).
+    config = LaunchConfiguration("nav_config")
     gamepad = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             str(Path(get_package_share_directory("control_pkg")) / "launch" / "gamepad_control.launch.py")),
@@ -41,7 +45,7 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("gamepad")))
     return LaunchDescription([
         DeclareLaunchArgument("path_file", description="caminho (CSV vida_path v1)"),
-        DeclareLaunchArgument("config", default_value=str(share / "config" / "navigation.yaml")),
+        DeclareLaunchArgument("nav_config", default_value=str(share / "config" / "navigation.yaml")),
         DeclareLaunchArgument("gamepad", default_value="true"),
         DeclareLaunchArgument("device_id", default_value="0"),
         gamepad,

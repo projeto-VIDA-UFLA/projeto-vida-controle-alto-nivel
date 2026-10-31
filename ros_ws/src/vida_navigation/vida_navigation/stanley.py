@@ -4,7 +4,7 @@
 
 Lei de controle no eixo dianteiro (frente = traseiro + L (cos th, sin th)):
 
-    delta = psi_e - atan(k e / (k_s + v)) + k_ff atan(L_ef kappa)
+    delta = psi_e - atan(k e / (k_s + v)) + k_ff atan(L_ef kappa) - k_r (r - v kappa)
 
 psi_e = rumo do caminho - rumo do veiculo; e = erro lateral, positivo com o
 veiculo a ESQUERDA do caminho (por isso o sinal negativo: a esquerda, vira a
@@ -12,7 +12,11 @@ direita); kappa = curvatura do caminho no ponto projetado; L_ef = entre-eixos
 efetivo (1,42 m medido no chao: o veiculo vira menos que a geometria preve).
 Saida saturada em +-20 graus e com taxa limitada. Angulos em REP-103.
 
-Velocidade constante (2,5 m/s): abaixo de ~2 m/s a controladora de tracao
+k_r amortece o giro em excesso (r = velocidade de giro medida; Stanley
+original): no 1o teste (30/10) o comando oscilava +-10 graus a 0,7 Hz pelo
+atraso de ~0,3 s do esterçamento.
+
+Velocidade constante: abaixo de ~2 m/s a controladora de tracao
 pulsa, entao nao ha desaceleracao gradual no fim; o Stanley pede freio total
 quando a distancia restante chega a distancia de frenagem
 (v^2 / 2 a_freio + v * atraso).
@@ -41,9 +45,10 @@ from vida_navigation.ros_common import origin_from_status, yaw_from_quaternion
 class StanleyParams:
     wheelbase_m: float = 1.125           # geometrico: posicao do eixo dianteiro
     feedforward_wheelbase_m: float = 1.42  # efetivo, para o feedforward da curvatura
-    gain_k: float = 3.0                  # 1/s; a 2,5 m/s equivale a k = 2 a 1 m/s (simulacao)
+    gain_k: float = 2.0                  # 1/s; padrao para 2,5 m/s (simulador calibrado, 30/10)
     softening_m_s: float = 1.0           # k_s: evita ganho infinito parado
     feedforward_gain: float = 1.0
+    yaw_damping_s: float = 0.25          # k_r (s); 0 desliga
     max_steering_deg: float = 20.0
     steering_rate_deg_s: float = 40.0
     speed_m_s: float = 2.5
@@ -102,7 +107,7 @@ class StanleyController:
     def stop(self):
         self.active = False
 
-    def update(self, x, y, yaw, speed, dt):
+    def update(self, x, y, yaw, speed, dt, yaw_rate=None):
         p = self.p
         fx, fy = self.front_axle(x, y, yaw)
         proj = self.path.project(fx, fy, hint=self.hint, back_m=p.search_back_m, ahead_m=p.search_ahead_m)
@@ -119,7 +124,10 @@ class StanleyController:
         term_heading = heading_error
         term_cross = -math.atan(p.gain_k * proj.cross_track / (p.softening_m_s + max(speed, 0.0)))
         term_ff = p.feedforward_gain * math.atan(p.feedforward_wheelbase_m * proj.curvature)
-        desired = math.degrees(term_heading + term_cross + term_ff)
+        term_damping = 0.0
+        if yaw_rate is not None and p.yaw_damping_s > 0.0:
+            term_damping = -p.yaw_damping_s * (yaw_rate - max(speed, 0.0) * proj.curvature)
+        desired = math.degrees(term_heading + term_cross + term_ff + term_damping)
         limited = float(np.clip(desired, -p.max_steering_deg, p.max_steering_deg))
         step = p.steering_rate_deg_s * dt
         self.command += float(np.clip(limited - self.command, -step, step))
@@ -157,9 +165,10 @@ class StanleyNode(Node):
         self.params = StanleyParams(
             wheelbase_m=dp("wheelbase_m", 1.125).value,
             feedforward_wheelbase_m=dp("feedforward_wheelbase_m", 1.42).value,
-            gain_k=dp("gain_k", 3.0).value,
+            gain_k=dp("gain_k", 2.0).value,
             softening_m_s=dp("softening_m_s", 1.0).value,
             feedforward_gain=dp("feedforward_gain", 1.0).value,
+            yaw_damping_s=dp("yaw_damping_s", 0.25).value,
             max_steering_deg=dp("max_steering_deg", 20.0).value,
             steering_rate_deg_s=dp("steering_rate_deg_s", 40.0).value,
             speed_m_s=dp("speed_m_s", 2.5).value,
@@ -231,7 +240,7 @@ class StanleyNode(Node):
         self.last_update = now
         o = odom.pose.pose
         out = c.update(o.position.x, o.position.y, yaw_from_quaternion(o.orientation),
-                       odom.twist.twist.linear.x, dt)
+                       odom.twist.twist.linear.x, dt, yaw_rate=odom.twist.twist.angular.z)
         self.last_output = out
 
         stamp = now.to_msg()

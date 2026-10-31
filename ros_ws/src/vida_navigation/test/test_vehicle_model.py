@@ -33,18 +33,18 @@ def test_constant_steering_gives_kinematic_radius():
     model = VehicleModel(VehicleParams(wheelbase_m=1.38))
     drive(model, 10.0, steering=20.0, speed=1.0)
     radius = model.state.speed / model.yaw_rate
-    assert 19.5 < model.state.steering_deg <= 20.0                   # para na zona morta
+    assert 19.0 < model.state.steering_deg < 21.0                    # zona morta + sobressinal
     assert abs(radius - 1.38 / math.tan(math.radians(model.state.steering_deg))) < 1e-6
-    assert 3.75 < radius < 3.9                                          # ~3,8 m
+    assert 3.6 < radius < 4.1                                           # ~3,8 m
 
 
 def test_steering_reference_is_saturated_and_deadband_holds():
     model = VehicleModel()
     drive(model, 3.0, steering=35.0)
-    assert abs(model.state.steering_deg - 20.0) < 0.5
+    assert abs(model.state.steering_deg - 20.0) < 1.0
     angle = model.state.steering_deg
     drive(model, 1.0, t0=3.0, steering=angle + 1.0)   # dentro da histerese: nao mexe
-    assert model.state.steering_deg == angle
+    assert abs(model.state.steering_deg - angle) < 0.05
 
 
 def test_stale_references_block_and_brake():

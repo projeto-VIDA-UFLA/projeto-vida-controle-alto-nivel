@@ -43,13 +43,14 @@ def test_output_is_saturated_and_rate_limited():
 
 
 def test_one_lap_tracks_and_stops_at_start_point():
-    # 2,5 m/s em curvas de 6 m (raio recomendado), freio total na distancia de frenagem.
+    # 2,5 m/s em curvas de 6 m (raio recomendado), freio total na distancia de frenagem,
+    # com o esterçamento real (atraso ~0,3 s e sobressinal) do simulador calibrado.
     path = stadium()
     result = run(path, encoder_scale_error=0.035, gps_noise_m=0.02, maneuver_m=0.5)
     assert result.finished
     distance = np.r_[0, np.cumsum(np.hypot(*np.diff(result.trajectory, axis=0).T))]
     e = np.abs(result.cross_track[distance > 10.0])
-    assert e.mean() < 0.2 and e.max() < 0.4
+    assert e.mean() < 0.25 and e.max() < 0.6
     # para pouco antes do ponto de partida do caminho (eixo dianteiro)
     x, y = result.trajectory[-1]
     yaw = path.project(x, y).heading
@@ -65,4 +66,4 @@ def test_worst_enabled_error_stays_below_abort_threshold():
                      maneuver_m=0.5)
         distance = np.r_[0, np.cumsum(np.hypot(*np.diff(result.trajectory, axis=0).T))]
         assert np.abs(result.cross_track).max() < 1.0
-        assert np.abs(result.cross_track[distance > 10.0]).max() < 0.4
+        assert np.abs(result.cross_track[distance > 10.0]).max() < 0.7

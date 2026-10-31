@@ -73,8 +73,10 @@ A 2,5 m/s, numa pista com curvas de 6 m: erro lateral médio de ~0,14 m. Cenári
 `esp_bloqueio`, `longe` (com `start_back_m:=6.0`) e `desalinhado` (com
 `start_yaw_deg:=40.0`). Com `gamepad:=true` dá para dirigir o simulador.
 
-Pendências para a pista: ganho `gain_k` (3 a 2,5 m/s) validado só no
-simulador; GPS a 1 Hz gera degraus de até ~0,2 m nas curvas (tentar 2 Hz no
+Ajuste de 30/10 (1º Stanley no chão): o esterçamento real tem ~0,3 s de atraso
+e sobressinal, e o simulador foi calibrado com esse teste. Para 1,5 m/s:
+`gain_k` 1,5 e `yaw_damping_s` 0,2 (amortecimento do giro em excesso).
+Pendências para a pista: GPS a 1 Hz gera degraus de até ~0,2 m nas curvas (tentar 2 Hz no
 ZED-F9R) e a escala dos encoders está ~3,5% acima do GPS.
 
 # Instalação CMake

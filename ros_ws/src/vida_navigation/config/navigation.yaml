@@ -4,9 +4,12 @@ stanley:
   ros__parameters:
     wheelbase_m: 1.125          # geometrico: posicao do eixo dianteiro
     feedforward_wheelbase_m: 1.42  # efetivo medido no chao (30/10), para o feedforward
-    # 1o teste do Stanley (rota 3, 30/10): 1,5 m/s. O ganho acompanha a velocidade
-    # (k / (k_s + v) ~ constante): 1,5 m/s -> 2,2; 2,0 -> 2,6; 2,5 -> 3,0.
-    gain_k: 2.2                 # erro lateral: atan(k e / (k_s + v))
+    # 2o ajuste (30/10): o 1o Stanley (k 2,2) oscilou +-10 graus a 0,7 Hz pelo
+    # atraso de ~0,3 s do esterçamento e pelo carro virando ~16% mais na grama.
+    # No simulador calibrado com esse teste, k 1,5 + amortecimento de giro 0,2 s
+    # reduziu a oscilacao ~60% (amortecimento >= 0,4 volta a oscilar a 0,9 Hz).
+    gain_k: 1.5                 # erro lateral: atan(k e / (k_s + v))
+    yaw_damping_s: 0.2          # -k_r (r - v kappa): freia o giro em excesso
     softening_m_s: 1.0
     feedforward_gain: 1.0       # atan(L kappa)
     max_steering_deg: 20.0      # = STEERING_REFERENCE_MAX_DEG do firmware
@@ -33,3 +36,4 @@ mode_manager:
     steering_aligned_deg: 1.5
     max_correction_age_s: 5.0
     gnss_timeout_s: 2.5
+    esp_block_tolerance_s: 0.3      # bloqueio do ESP32 mais curto que isso nao aborta
