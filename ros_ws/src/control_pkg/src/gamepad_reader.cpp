@@ -12,6 +12,7 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
   r2_axis_ = this->declare_parameter<int>("r2_axis", 5);
   l2_axis_ = this->declare_parameter<int>("l2_axis", 2);
   max_speed_m_s_ = this->declare_parameter<double>("max_speed_m_s", 1.0);
+  max_steering_deg_ = this->declare_parameter<double>("max_steering_deg", 20.0);
   brake_threshold_ = this->declare_parameter<double>("brake_threshold", 0.1);
   bench_enter_button_ = this->declare_parameter<int>("bench_enter_button", 0);
   bench_exit_button_ = this->declare_parameter<int>("bench_exit_button", 1);
@@ -98,7 +99,7 @@ void GamepadReader::publish_references()
   vida_interfaces::msg::SteeringReference steering_reference;
   steering_reference.timestamp = timestamp;
   // REP-103: analogico para a esquerda (+1 no joy) = angulo positivo.
-  steering_reference.angle_deg = 15.0F * left_stick_value_;
+  steering_reference.angle_deg = static_cast<float>(max_steering_deg_) * left_stick_value_;
   steering_reference.angular_velocity_deg_s = 0.0F;
   
 

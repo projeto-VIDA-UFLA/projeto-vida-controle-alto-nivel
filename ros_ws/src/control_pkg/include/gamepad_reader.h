@@ -62,6 +62,7 @@ private:
 
   // Velocidade com R2 no fundo e fracao do L2 que aciona o freio.
   double max_speed_m_s_;
+  double max_steering_deg_;
   double brake_threshold_;
 
   // Sem mensagem do joy_node por mais que isso: referencias zeradas e freio total.
