@@ -127,7 +127,9 @@ class ModeManager(Node):
         self.maneuver_start_fix = None
         self.auto_origin_id = None
         self.refused_count = 0
-        self.create_timer(0.02, self.on_timer)
+        # 25 Hz, como o gamepad no manual. A 50 Hz o ESP32 recebia 150 mensagens/s
+        # no automatico (100 no manual) e perdia o enable logico (flag 8, 31/10).
+        self.create_timer(0.04, self.on_timer)
         self.create_timer(0.1, self.publish_mode)
         self.get_logger().info(f"Modo MANUAL; caminho '{self.path_name}' "
                                f"({'fechado' if self.path_file.closed else 'aberto'})")
