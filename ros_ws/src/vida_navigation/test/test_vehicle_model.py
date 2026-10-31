@@ -79,7 +79,7 @@ def test_ekf_emulator_phases_and_heading_requirement():
 
 def test_ekf_emulator_sawtooth_from_encoder_scale():
     model = VehicleModel()
-    ekf = EkfEmulator(Origin(-21.2293928, -44.9732956), encoder_scale_error=0.07)
+    ekf = EkfEmulator(Origin(-21.2293928, -44.9732956), encoder_scale_error=0.07, gps_rate_hz=1.0)
     t, worst = 0.0, 0.0
     for _ in range(400):
         t += DT

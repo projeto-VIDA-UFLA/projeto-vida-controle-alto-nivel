@@ -42,7 +42,7 @@ class EkfEmulator:
     de serra de ate 0,35 m visto no teste de 12/10 com GPS a 1 Hz e +7%).
     """
 
-    def __init__(self, world, gps_rate_hz=1.0, origin_samples=3, heading_min_distance_m=2.0,
+    def __init__(self, world, gps_rate_hz=2.0, origin_samples=3, heading_min_distance_m=2.0,
                  heading_timeout_s=20.0, encoder_scale_error=0.0, gps_noise_m=0.0, seed=0):
         self.world = world
         self.gps_period = 1.0 / gps_rate_hz
@@ -163,7 +163,7 @@ class SimVehicle(Node):
         self.last_logical_enable = -1e9
 
         self.ekf = EkfEmulator(
-            self.world, gps_rate_hz=dp("gps_rate_hz", 1.0).value,
+            self.world, gps_rate_hz=dp("gps_rate_hz", 2.0).value,   # ZED-F9R a 2 Hz desde 31/10
             encoder_scale_error=dp("encoder_scale_error", 0.0).value,
             gps_noise_m=dp("gps_noise_m", 0.0).value)
         self.correction_age = 1.0
