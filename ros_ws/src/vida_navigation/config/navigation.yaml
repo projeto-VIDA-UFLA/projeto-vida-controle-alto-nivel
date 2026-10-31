@@ -3,7 +3,12 @@
 stanley:
   ros__parameters:
     wheelbase_m: 1.125          # geometrico: posicao do eixo dianteiro
-    feedforward_wheelbase_m: 1.42  # efetivo medido no chao (30/10), para o feedforward
+    # Efetivo para o feedforward: 1,42 medido em 30/10 com a roda traseira
+    # patinando no eixo (falta a chaveta). Na 1a volta completa da rota_4
+    # (31/10) o carro cortou as curvas por dentro dos dois lados (+29 cm nas da
+    # esquerda, -14 cm nas da direita) e as curvas deram ~1,17 m. Remedir com a
+    # chaveta definitiva.
+    feedforward_wheelbase_m: 1.17
     # 2o ajuste (30/10): o 1o Stanley (k 2,2) oscilou +-10 graus a 0,7 Hz pelo
     # atraso de ~0,3 s do esterçamento e pelo carro virando ~16% mais na grama.
     # No simulador calibrado com esse teste, k 1,5 + amortecimento de giro 0,2 s
@@ -14,8 +19,9 @@ stanley:
     feedforward_gain: 1.0       # atan(L kappa)
     max_steering_deg: 20.0      # = STEERING_REFERENCE_MAX_DEG do firmware
     steering_rate_deg_s: 40.0
-    speed_m_s: 1.5              # abaixo de ~2 m/s a controladora pulsa, mas a inercia
-                                # segura a velocidade com +-0,09 m/s (rotas de 30/10)
+    speed_m_s: 2.0              # 31/10: 1,5 na 1a volta completa da rota_4. No
+                                # simulador, 2,0 aumenta o erro lateral ~15% sem
+                                # mudar ganhos (k ja e normalizado pela velocidade)
     brake_decel_m_s2: 1.5       # freio total no plano (30/10): para a v^2/2a + v*atraso do fim
     brake_delay_s: 0.2
     odom_timeout_s: 0.2
