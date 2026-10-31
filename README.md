@@ -20,8 +20,9 @@ Caminhos ficam em CSV (latitude/longitude, cabeçalho `# vida_path v1`), em
     ros2 run vida_navigation path_recorder --ros-args -p output_file:=volta_bruta.csv
     ros2 run vida_navigation path_tools from-recording volta_bruta.csv pista.csv
 
-Cada comando valida o caminho (raio mínimo 3,8 m com ±20°, reta inicial de 5 m
-para a manobra de inicialização, lacunas sem FIXED na gravação) e salva um
+Cada comando valida o caminho (raio mínimo 4 m com ±20° e recomendado de 6 m a
+2,5 m/s, reta inicial de 10 m para a manobra de inicialização, lacunas sem
+FIXED na gravação) e salva um
 gráfico `.png` ao lado. `path_tools validate` e `path_tools compare` (Google x
 gravado) também estão disponíveis. Testes:
 
@@ -30,6 +31,13 @@ gravado) também estão disponíveis. Testes:
 ## Modo automático (Stanley)
 
     ros2 launch vida_navigation navigation.launch.py path_file:=/caminho/pista.csv
+
+Pelo Docker (a pasta `../analises` do notebook aparece como `/caminhos`):
+
+    docker compose stop ros_ws
+    VIDA_PATH_FILE=/caminhos/<pasta>/<caminho>.csv docker compose --profile navegacao up -d navegacao
+    # de volta ao manual:
+    docker compose stop navegacao && docker compose up -d ros_ws
 
 Sobe o gamepad (publicando em `/gamepad/*`), o `mode_manager` (único que
 publica `/vida/control/*/reference`), o `stanley` e o `path_publisher`.
@@ -41,28 +49,33 @@ Parâmetros em `ros_ws/src/vida_navigation/config/navigation.yaml`.
 | □ | sai do automático (para) | 4 curtos: de volta ao manual |
 | L2 | aborta e freia (qualquer momento) | contínua: aborto |
 | X / O | modo bancada (ESP32) | contínua / 3 pulsos |
+| R1 (3 s) | modo manobra: freio solto para empurrar (ESP32) | 2 curtos / 1 longo |
 
 Pedido recusado: 6 pulsos rápidos (motivo no log e em `/navigation/mode`).
 Para entrar: parado, ESP32 liberando, GPS com correções RTK e antena a até
 3 m do início do caminho. Sequência: alinha as rodas, reinicia o EKF (origem
-e bias, parado), anda reto a 0,5 m/s até o heading pelo GPS (RTK FIXED),
-confere o alinhamento (< 1 m, < 30°) e segue uma volta a 1 m/s. Ao voltar ao
-manual, a tração só volta ao gamepad depois de soltar o R2.
+e bias, parado), anda reto a 2 m/s até o heading pelo GPS (RTK FIXED; ~5-8 m),
+confere o alinhamento (< 0,5 m, < 15°) e segue uma volta a 2,5 m/s (abaixo de
+~2 m/s a controladora de tração pulsa). No fim, freia com tudo na distância de
+frenagem (v²/2a + v·atraso, a = 1,5 m/s² medido). Ao voltar ao manual, a tração
+só volta ao gamepad depois de soltar o R2.
 
 ## Simulação
 
     ros2 launch vida_navigation simulation.launch.py              # caminho de exemplo
     ros2 run vida_navigation sim_scenarios volta                  # operador simulado
 
-O `sim_vehicle` substitui ESP32 + GPS + EKF com os mesmos tópicos (entre-eixos
-efetivo de 1,38 m, erro de 7% dos encoders, GPS a 1 Hz). Cenários:
+O `sim_vehicle` substitui ESP32 + GPS + EKF com os mesmos tópicos, com os
+números medidos no chão em 30/10 (entre-eixos efetivo de 1,42 m, freio total
+~1,7 m/s², roda livre 0,5 m/s², rampa de 40°/s no esterçamento, GPS a 1 Hz).
+A 2,5 m/s, numa pista com curvas de 6 m: erro lateral médio de ~0,14 m. Cenários:
 `volta`, `float`, `l2`, `quadrado`, `rtk_perdido`, `gps_perdido`,
 `esp_bloqueio`, `longe` (com `start_back_m:=6.0`) e `desalinhado` (com
 `start_yaw_deg:=40.0`). Com `gamepad:=true` dá para dirigir o simulador.
 
-Pendências para a pista: ganho `gain_k` validado só no simulador; GPS a
-1 Hz gera degraus de até 0,35 m na posição (subir para 5-10 Hz no ZED-F9R
-e calibrar a escala dos encoders, ver TODO do firmware).
+Pendências para a pista: ganho `gain_k` (3 a 2,5 m/s) validado só no
+simulador; GPS a 1 Hz gera degraus de até ~0,2 m nas curvas (tentar 2 Hz no
+ZED-F9R) e a escala dos encoders está ~3,5% acima do GPS.
 
 # Instalação CMake
 1- sudo apt update

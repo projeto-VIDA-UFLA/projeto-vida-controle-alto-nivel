@@ -269,8 +269,8 @@ class ValidationReport:
         return not self.problems
 
 
-def validate(path, min_turn_radius_m=3.8, recommended_radius_m=5.0,
-             start_straight_required_m=5.0, straight_curvature=1.0 / 30.0):
+def validate(path, min_turn_radius_m=4.0, recommended_radius_m=6.0,
+             start_straight_required_m=10.0, straight_curvature=1.0 / 30.0):
     """Confere se o VIDA consegue seguir o caminho.
 
     min_turn_radius_m: raio minimo real do veiculo (+-20 graus; teste de 12/10/2026).
@@ -337,7 +337,7 @@ def _orient(ax, ay, bx, by, cx, cy):
 
 # ---------------------------------------------------------------- grafico
 
-def plot(path, filename, title="", raw_xy=None, min_turn_radius_m=3.8, recommended_radius_m=5.0,
+def plot(path, filename, title="", raw_xy=None, min_turn_radius_m=4.0, recommended_radius_m=6.0,
          other=None, other_label=""):
     import matplotlib
     matplotlib.use("Agg")

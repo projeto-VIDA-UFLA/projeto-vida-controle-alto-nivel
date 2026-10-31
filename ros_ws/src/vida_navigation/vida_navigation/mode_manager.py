@@ -60,12 +60,16 @@ class ModeManager(Node):
         self.path_name = self.path_file.meta.get("name", "")
         self.wheelbase = dp("wheelbase_m", 1.125).value
         self.start_max_distance = dp("start_max_distance_m", 3.0).value
-        self.max_heading_error = math.radians(dp("max_heading_error_deg", 30.0).value)
-        self.max_enable_cross_track = dp("max_enable_cross_track_m", 1.0).value
+        # A 2,5 m/s, entrar com 1 m e 30 graus levava o erro a 1,46 m (aborto em
+        # 1,5 m); com 0,5 m e 15 graus o pior caso fica em 0,64 m (simulador).
+        self.max_heading_error = math.radians(dp("max_heading_error_deg", 15.0).value)
+        self.max_enable_cross_track = dp("max_enable_cross_track_m", 0.5).value
         self.max_cross_track = dp("max_cross_track_m", 1.5).value
-        self.maneuver_speed = dp("maneuver_speed_m_s", 0.5).value
-        self.maneuver_max_distance = dp("maneuver_max_distance_m", 6.0).value
-        self.maneuver_timeout = dp("maneuver_timeout_s", 15.0).value
+        # 2 m/s: abaixo disso a controladora de tracao pulsa (30/10). Com a rampa
+        # de 0,4 m/s^2 a manobra anda ~5-8 m ate o EKF ter o rumo do GPS.
+        self.maneuver_speed = dp("maneuver_speed_m_s", 2.0).value
+        self.maneuver_max_distance = dp("maneuver_max_distance_m", 15.0).value
+        self.maneuver_timeout = dp("maneuver_timeout_s", 20.0).value
         self.preparing_timeout = dp("preparing_timeout_s", 5.0).value
         self.calibrating_timeout = dp("calibrating_timeout_s", 15.0).value
         self.stopping_timeout = dp("stopping_timeout_s", 15.0).value
@@ -324,7 +328,7 @@ class ModeManager(Node):
         yaw = yaw_from_quaternion(o.orientation)
         fx = o.position.x + self.wheelbase * math.cos(yaw)
         fy = o.position.y + self.wheelbase * math.sin(yaw)
-        proj = path.project(fx, fy, hint=0, back_m=2.0, ahead_m=15.0)
+        proj = path.project(fx, fy, hint=0, back_m=2.0, ahead_m=25.0)
         heading_error = float(wrap_angle(proj.heading - yaw))
         if abs(proj.cross_track) > self.max_enable_cross_track:
             self.abort(f"desalinhado: {proj.cross_track:+.2f} m do caminho")

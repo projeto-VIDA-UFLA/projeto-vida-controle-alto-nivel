@@ -19,12 +19,12 @@ from vida_navigation.path import PathFile, build_path, plot, read_kml, validate
 
 
 def _add_validation_args(parser):
-    parser.add_argument("--min-radius", type=float, default=3.8,
-                        help="raio minimo real do veiculo em metros (padrao 3.8)")
-    parser.add_argument("--recommended-radius", type=float, default=5.0,
-                        help="raio com folga para o Stanley (padrao 5.0)")
-    parser.add_argument("--start-straight", type=float, default=5.0,
-                        help="reta inicial exigida em metros (padrao 5.0)")
+    parser.add_argument("--min-radius", type=float, default=4.0,
+                        help="raio minimo real do veiculo em metros (padrao 4,0: L efetivo 1,42 m a 20 graus)")
+    parser.add_argument("--recommended-radius", type=float, default=6.0,
+                        help="raio com folga para o Stanley a 2,5 m/s (padrao 6,0)")
+    parser.add_argument("--start-straight", type=float, default=10.0,
+                        help="reta inicial exigida em metros (padrao 10: manobra de inicializacao a 2 m/s)")
 
 
 def _report(path_file, args, png, raw_xy=None, title=None):

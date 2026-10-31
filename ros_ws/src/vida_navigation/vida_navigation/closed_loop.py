@@ -35,7 +35,7 @@ class RunResult:
 
 
 def run(path, start_back_m=0.0, start_left_m=0.0, start_yaw_deg=0.0, stanley=None,
-        vehicle=None, encoder_scale_error=0.0, gps_noise_m=0.0, maneuver_m=3.0,
+        vehicle=None, encoder_scale_error=0.0, gps_noise_m=0.0, maneuver_m=3.0, maneuver_speed=2.0,
         dt=0.01, timeout_s=None, seed=0, enable_left_m=None, enable_yaw_deg=0.0):
     """Posiciona no inicio do caminho, anda maneuver_m reto (como a manobra do
     mode_manager), habilita o Stanley e roda ate o fim.
@@ -48,7 +48,7 @@ def run(path, start_back_m=0.0, start_left_m=0.0, start_yaw_deg=0.0, stanley=Non
     yaw = yaw0 + math.radians(start_yaw_deg)
     x0 = path.x[0] - start_back_m * math.cos(yaw0) - start_left_m * math.sin(yaw0)
     y0 = path.y[0] - start_back_m * math.sin(yaw0) + start_left_m * math.cos(yaw0)
-    model = VehicleModel(vehicle or VehicleParams(wheelbase_m=1.38), VehicleState(x=x0, y=y0, yaw=yaw))
+    model = VehicleModel(vehicle or VehicleParams(), VehicleState(x=x0, y=y0, yaw=yaw))
     # O frame local do caminho e o "mundo"; o EKF simulado tem a origem no 1o fix.
     ekf = EkfEmulator(Origin(-21.2293928, -44.9732956), encoder_scale_error=encoder_scale_error,
                       gps_noise_m=gps_noise_m, seed=seed)
@@ -67,7 +67,7 @@ def run(path, start_back_m=0.0, start_left_m=0.0, start_yaw_deg=0.0, stanley=Non
     start_distance = model.state.distance           # manobra reta
     while model.state.distance - start_distance < maneuver_m or ekf.heading_source == 0:
         t += dt
-        c.steering_deg, c.speed_m_s = 0.0, 0.5
+        c.steering_deg, c.speed_m_s = 0.0, maneuver_speed
         c.steering_time = c.drive_time = t
         model.step(t, dt)
         ekf.update(model.state, t, GnssStatus.RTK_FIXED, True, False)
@@ -100,6 +100,7 @@ def run(path, start_back_m=0.0, start_left_m=0.0, start_yaw_deg=0.0, stanley=Non
             x, y, yaw = ekf.estimate(s)
             out = controller.update(x, y, yaw, s.speed * (1 + encoder_scale_error), 0.02)
             c.steering_deg, c.speed_m_s = out.steering_command_deg, out.speed_command_m_s
+            c.brake = out.brake_command
             c.steering_time = c.drive_time = t
             real = truth.update(s.x, s.y, s.yaw, s.speed, 0.02)
             errors.append(real.cross_track_m)
@@ -118,7 +119,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("path_file")
     parser.add_argument("--gain", type=float, default=2.0)
-    parser.add_argument("--speed", type=float, default=1.0)
+    parser.add_argument("--speed", type=float, default=2.5)
     parser.add_argument("--scale-error", type=float, default=0.0)
     parser.add_argument("--gps-noise", type=float, default=0.0)
     parser.add_argument("--left", type=float, default=0.0, help="deslocamento lateral inicial (m)")

@@ -27,11 +27,11 @@
     auto_exit_button: 3
     auto_hold_time_s: 5.0
     # Modo manobra (freio solto para empurrar o veiculo, inclusive com o enable
-    # fisico desligado): segurar L1 por maneuver_hold_time_s liga/desliga; R2 ou
+    # fisico desligado): segurar R1 por maneuver_hold_time_s liga/desliga; R2 ou
     # L2 cancelam. O ESP32 so entra parado e cancela se o veiculo passar de
-    # 1 m/s ou o enable fisico for desligado. Vibracao: 2 pulsos curtos = freio
+    # 2,5 m/s ou o enable fisico for desligado. Vibracao: 2 pulsos curtos = freio
     # solto; 1 pulso longo = freio de volta.
-    maneuver_button: 4
+    maneuver_button: 5
     maneuver_hold_time_s: 3.0
     # Sem mensagens do joy_node por mais que isso: referencias zeradas e freio total
     # (o joy_node republica a autorepeat_rate, 50 Hz).

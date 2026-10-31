@@ -19,7 +19,7 @@ GamepadReader::GamepadReader(const std::string &node_name) : Node(node_name, "/g
   auto_enter_button_ = this->declare_parameter<int>("auto_enter_button", 2);
   auto_exit_button_ = this->declare_parameter<int>("auto_exit_button", 3);
   auto_hold_time_s_ = this->declare_parameter<double>("auto_hold_time_s", 5.0);
-  maneuver_button_ = this->declare_parameter<int>("maneuver_button", 4);
+  maneuver_button_ = this->declare_parameter<int>("maneuver_button", 5);
   maneuver_hold_time_s_ = this->declare_parameter<double>("maneuver_hold_time_s", 3.0);
   joy_timeout_ = std::chrono::milliseconds(
     static_cast<int>(1000.0 * this->declare_parameter<double>("joy_timeout_s", 0.25)));

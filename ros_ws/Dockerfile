@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-colcon-common-extensions \
     ros-humble-rosidl-default-generators \
     ros-humble-joy \
+    python3-numpy \
+    python3-scipy \
+    python3-matplotlib \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /vida_ws

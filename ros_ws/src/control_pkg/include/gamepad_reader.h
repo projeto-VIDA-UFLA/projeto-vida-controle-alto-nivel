@@ -47,7 +47,7 @@ private:
   void navigation_mode_callback(const vida_interfaces::msg::NavigationMode::SharedPtr msg);
   void start_rumble(std::vector<std::pair<std::chrono::milliseconds, float>> pattern);
 
-  // Modo manobra (freio solto para empurrar o veiculo): segurar o botao (L1)
+  // Modo manobra (freio solto para empurrar o veiculo): segurar o botao (R1)
   // por maneuver_hold_time_s liga/desliga o pedido; R2 ou L2 cancelam. O
   // pedido vai em DriveReference.brake_command = -1 e o ESP32 decide se entra
   // (parado, gamepad vivo; ver MANEUVER_* no firmware).

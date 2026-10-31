@@ -136,9 +136,10 @@ class SimVehicle(Node):
         self.logical_enable_timeout = 0.3
 
         params = VehicleParams(
-            # 1,38 m: entre-eixos efetivo medido em 12/10 (o veiculo vira ~16% menos que a
-            # geometria de 1,125 m preve). O Stanley continua usando 1,125 m.
-            wheelbase_m=dp("wheelbase_m", 1.38).value,
+            # 1,42 m: entre-eixos efetivo medido no chao em 30/10 (o veiculo vira menos
+            # que a geometria de 1,125 m preve); o Stanley usa 1,125 m para a posicao
+            # do eixo dianteiro e 1,42 m no feedforward.
+            wheelbase_m=dp("wheelbase_m", 1.42).value,
             steering_rate_max_deg_s=dp("steering_rate_max_deg_s", 30.0).value,
             drive_time_constant_s=dp("drive_time_constant_s", 1.2).value)
 

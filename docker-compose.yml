@@ -1,32 +1,41 @@
+# Dois modos (o mesmo gamepad; rodar um de cada vez):
+#   manual (padrao):  docker compose up -d
+#   navegacao:        docker compose stop ros_ws
+#                     VIDA_PATH_FILE=/caminhos/<arquivo>.csv docker compose --profile navegacao up -d navegacao
+# Os caminhos ficam em ../analises no notebook (montado em /caminhos).
+x-ros-comum: &ros-comum
+  build:
+    context: ./ros_ws
+    dockerfile: Dockerfile
+  image: vida-ros-ws:humble
+  restart: unless-stopped
+  network_mode: host
+  ipc: host
+  stdin_open: true
+  tty: true
+
+  environment:
+    ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+    # Impede o Fast DDS de tentar usar memória compartilhada entre o
+    # container e os processos ROS executados diretamente no host.
+    FASTDDS_BUILTIN_TRANSPORTS: UDPv4
+    DISPLAY: ${DISPLAY}
+    QT_X11_NO_MITSHM: "1"
+
+  # Disponibiliza /dev/input/js* e /dev/input/event* para o joy_node e a pasta
+  # de caminhos (CSV) do notebook.
+  volumes:
+    - /dev/input:/dev/input:rw
+    - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    - ../analises:/caminhos:rw
+
+  device_cgroup_rules:
+    - "c 13:* rmw"
+
 services:
   ros_ws:
-    build:
-      context: ./ros_ws
-      dockerfile: Dockerfile
-    image: vida-ros-ws:humble
+    <<: *ros-comum
     container_name: ros_ws
-    restart: unless-stopped
-    network_mode: host
-    ipc: host
-    stdin_open: true
-    tty: true
-
-    environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-      # Impede o Fast DDS de tentar usar memória compartilhada entre o
-      # container e os processos ROS executados diretamente no host.
-      FASTDDS_BUILTIN_TRANSPORTS: UDPv4
-      DISPLAY: ${DISPLAY}
-      QT_X11_NO_MITSHM: "1"
-
-    # Disponibiliza /dev/input/js* e /dev/input/event* para o joy_node.
-    volumes:
-      - /dev/input:/dev/input:rw
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-
-    device_cgroup_rules:
-      - "c 13:* rmw"
-
     command:
       - bash
       - -lc
@@ -34,3 +43,15 @@ services:
         source /opt/ros/humble/setup.bash &&
         source /vida_ws/install/setup.bash &&
         exec ros2 launch control_pkg gamepad_control.launch.py
+
+  navegacao:
+    <<: *ros-comum
+    container_name: ros_ws_navegacao
+    profiles: ["navegacao"]
+    command:
+      - bash
+      - -lc
+      - >-
+        source /opt/ros/humble/setup.bash &&
+        source /vida_ws/install/setup.bash &&
+        exec ros2 launch vida_navigation navigation.launch.py path_file:=${VIDA_PATH_FILE:-/caminhos/rota.csv}
