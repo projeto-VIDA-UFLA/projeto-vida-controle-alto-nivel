@@ -1,5 +1,7 @@
 # Instruções para executar o programa
 
+**Passo a passo completo (atualizar, gravar o firmware, ligar, manual, Stanley e gravar rota): [docs/operacao.md](docs/operacao.md).**
+
 # Estimador de estado (EKF)
 O `robot_state_ekf` roda no Odroid (nível 2) e fica no repositório
 `projeto-vida-controle-baixo-nivel-odroid` (submodule em `ros_ws/src/robot_state_ekf`).
