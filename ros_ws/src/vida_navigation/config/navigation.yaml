@@ -40,6 +40,9 @@ mode_manager:
     calibrating_timeout_s: 15.0
     stopping_timeout_s: 15.0
     steering_aligned_deg: 1.5
-    max_correction_age_s: 5.0
+    # Era 5,0. 01/11 (stanleyPista2): o NTRIP travou 10,4 s, o RTK ficou em FIXED
+    # (1,5 cm), o erro lateral nao piorou e o automatico abortou sem necessidade.
+    # 30 s = maior idade vista com FIXED; de 10 a 30 s ainda nao foi medido andando.
+    max_correction_age_s: 30.0
     gnss_timeout_s: 2.5
     esp_block_tolerance_s: 0.3      # bloqueio do ESP32 mais curto que isso nao aborta
