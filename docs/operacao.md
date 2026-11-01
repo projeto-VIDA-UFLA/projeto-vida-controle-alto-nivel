@@ -28,7 +28,9 @@ docker compose build
 
 ## 2. Odroid: gravar o firmware do ESP32
 
-O agente micro-ROS ocupa a serial do ESP32 e precisa ficar parado durante o upload.
+O agente micro-ROS ocupa a serial do ESP32. No Odroid, o `pio run -t upload` já
+para o agente se ele estiver rodando e o reinicia depois do upload (configuração
+local do Odroid), então não é preciso pará-lo à mão.
 
 ```bash
 cd ~/projeto-vida-firmware-esp32
@@ -40,8 +42,7 @@ git pull
 pio run -e vida_firmware -t clean_microros
 pio run -e vida_firmware
 
-cd ~/projeto-vida-controle-baixo-nivel-odroid && docker compose stop micro_ros_agent
-cd ~/projeto-vida-firmware-esp32 && pio run -e vida_firmware -t upload
+pio run -e vida_firmware -t upload
 # Se o upload falhar ("Unable to verify flash chip connection"):
 #   pio run -e vida_firmware -t upload --upload-option="--baud=115200"
 ```
@@ -156,7 +157,7 @@ O `-a` grava tudo, inclusive a bateria (`/vida/sensors/battery`). Sem o bag não
 
 | Sintoma | O que fazer |
 |---|---|
-| Upload do ESP32 falha | O agente está com a serial: `docker compose stop micro_ros_agent` no Odroid |
+| Upload do ESP32 falha | Tentar com `--upload-option="--baud=115200"`; conferir com `docker ps` se o agente parou durante o upload |
 | ESP32 não aparece depois de reiniciar o agente | Esperar ~5 s (o agente espera 2 s antes de abrir a serial); se não voltar, apertar o reset do ESP32 |
 | Flag 4096, 512 ou 1024 | Falha retida: desligar e religar o enable físico para rearmar |
 | Automático recusado (6 pulsos) | Ver o motivo em `docker logs ros_ws_navegacao` (distância do início, RTK, ESP32 bloqueado) |
