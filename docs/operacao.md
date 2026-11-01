@@ -43,8 +43,6 @@ git pull
 # Só quando alguma .msg ou o colcon.meta mudou (ex.: BatteryStatus, 31/10).
 # Apaga e recompila a libmicroros: demora e precisa de internet.
 pio run -e vida_firmware -t clean_microros
-pio run -e vida_firmware
-
 pio run -e vida_firmware -t upload
 # Se o upload falhar ("Unable to verify flash chip connection"):
 #   pio run -e vida_firmware -t upload --upload-option="--baud=115200"
@@ -58,8 +56,6 @@ git branch --show-current                   # pendente-teste/navegacao
 git pull
 docker compose build
 
-# Mensagens no ROS do próprio notebook (para ros2 bag/topic fora do container)
-cd ros_ws && colcon build --packages-select vida_interfaces && cd ..
 ```
 
 ## 4. Ligar
