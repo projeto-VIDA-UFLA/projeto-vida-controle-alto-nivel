@@ -1,7 +1,10 @@
 # Operação do VIDA: do zero até o carro andando
 
-Passo a passo para atualizar os três repositórios, gravar o firmware e rodar o
-carro no manual ou no automático (Stanley). Também descreve como gravar uma rota nova.
+Passo a passo completo, nas duas máquinas: atualizar os três repositórios, gravar o
+firmware, ligar, rodar o carro no manual ou no automático (Stanley) e gravar uma rota nova.
+
+> O mesmo arquivo está em `projeto-vida-controle-alto-nivel/docs/operacao.md` e em
+> `projeto-vida-controle-baixo-nivel-odroid/docs/operacao.md`. Ao alterar, copiar para o outro.
 
 | Máquina | Repositório | Branch de teste |
 |---|---|---|
@@ -67,6 +70,14 @@ cd ~/projeto-vida-controle-baixo-nivel-odroid
 docker compose up -d                        # agente micro-ROS + ros2_ws (GPS, EKF, segurança)
 docker compose logs -f micro_ros_agent      # Ctrl+C para sair; deve criar as entidades do ESP32
 ```
+
+| Serviço (Odroid) | O que roda |
+|---|---|
+| `micro_ros_agent` | Agente micro-ROS na serial `/dev/vida_esp32` (921600). Espera 2 s antes de abrir a serial, para o ESP32 perceber a queda e reconectar |
+| `ros2_ws` | `vida_odroid` (`vida.launch.py`): GPS/RTK (ZED-F9R em `/dev/vida_f9r`, correções NTRIP), `robot_state_ekf` e o nó `security` (enable lógico) |
+
+O `.env` com o usuário e a senha do NTRIP fica só no Odroid, ao lado do
+`docker-compose.yml` (está no `.gitignore`; nunca commitar).
 
 **Notebook** (em todos os terminais com `ros2` no host):
 ```bash
@@ -152,6 +163,40 @@ ros2 bag record -a -o ~/rosbag/<teste>_<data>
 ```
 
 O `-a` grava tudo, inclusive a bateria (`/vida/sensors/battery`). Sem o bag não dá para analisar o teste depois.
+
+## Comandos úteis
+
+```bash
+ros2 service call /robot_state_ekf_node/reset std_srvs/srv/Trigger   # reinicia o EKF (carro parado)
+ros2 topic echo /vida/sensors/battery                                 # bateria (valid: false sem o INA228)
+docker compose restart micro_ros_agent                                # no Odroid: agente de novo (ESP32 reconecta em ~5 s)
+docker compose logs -f ros2_ws                                        # no Odroid: GPS, EKF e segurança
+```
+
+## Mensagens (`vida_interfaces`)
+
+O pacote existe nos três repositórios e precisa ter as mesmas definições:
+
+| Repositório | Pasta |
+|---|---|
+| Firmware | `interfaces/vida_interfaces/` (só as mensagens que o ESP32 usa) |
+| Odroid | `ros_ws/src/vida_interfaces/` |
+| Notebook | `ros_ws/src/vida_interfaces/` |
+
+Ao mudar uma `.msg`: mudar nos três e recompilar (`clean_microros` no firmware, etapa 2;
+`docker compose build` no Odroid e no notebook; `colcon build` no notebook, etapa 3).
+
+| Mensagem | Quem publica |
+|---|---|
+| `Encoders`, `Steering`, `Comands`, `SafetyStatus`, `BatteryStatus` | ESP32 |
+| `SteeringReference`, `DriveReference` | notebook (gamepad / `mode_manager`) → ESP32 |
+| `LogicalEnable` | Odroid (`security`) → ESP32 |
+| `GnssStatus`, `EkfStatus` | Odroid |
+| `StanleyStatus`, `NavigationMode` | notebook |
+
+`BatteryStatus` (31/10): tensão, corrente e SoC do banco de tração, medidos pelo INA228
+no ESP32, em `/vida/sensors/battery` a 10 Hz. Nenhum nó assina; serve para acompanhar e
+gravar em bag. A corrente sai NaN até o shunt ser configurado no firmware.
 
 ## Problemas comuns
 
