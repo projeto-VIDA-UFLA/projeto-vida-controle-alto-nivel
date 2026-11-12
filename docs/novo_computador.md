@@ -88,7 +88,7 @@ O script:
 - instala o compartilhamento de internet com a Odroid (NAT), que só fica ativo junto com o perfil;
 - instala o comando `vida-rede` e o serviço `vida-rede`, que executa o botão do painel (o
   painel roda em container e não mexe na rede do Ubuntu: ele só pede ao serviço);
-- no fim, confere o resto da preparação (Docker, repositórios, imagens, controle).
+- no fim, confere o resto da preparação (Docker, repositórios e imagens).
 
 **Ele não muda a rede normal do computador.** Fora do perfil do VIDA, a porta cabeada continua
 no modo automático (DHCP), e reiniciar o computador sempre volta a esse modo.
@@ -98,12 +98,20 @@ Para desfazer: `sudo ./preparar_computador.sh --remover`.
 
 ## 6. Controle (DS4) por Bluetooth
 
-**Configurações → Bluetooth**. No controle, segure **PS + Share** até a luz piscar rápido e
-escolha "Wireless Controller". O pareamento fica salvo; nas próximas vezes basta apertar PS.
+A conexão é **manual, a cada uso**: a reconexão automática desse controle não funciona de
+forma confiável no Linux, então nenhum script cuida dela.
+
+1. No controle, segure **PS (Home) + Share** até a luz piscar rápido.
+2. No Ubuntu: **Configurações → Bluetooth** e clique em **"Wireless Controller"** para
+   conectar (na primeira vez, para parear).
+3. A luz do controle fica acesa fixa quando conecta.
+
+Se o controle desconectar durante o uso, repita os três passos.
 
 ## 7. Operar
 
 1. Ligue o VIDA (a Odroid sobe sozinha) e passe o cabo de rede da Odroid até o notebook.
+   Conecte o controle (etapa 6).
 2. Abra o painel: **http://localhost:8080** (de preferência no Chrome).
 3. Clique em **Conectar à Odroid** (no topo do painel). O painel configura a porta, compartilha
    a internet e confere com ping. Deu certo quando o bloco **ESP32 / Odroid** fica verde.

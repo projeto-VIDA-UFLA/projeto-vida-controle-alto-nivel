@@ -154,16 +154,8 @@ verificar() {
     [ -d "$PROJETO/$repo" ] && ok "$PROJETO/$repo" || aviso "Falta a pasta $PROJETO/$repo (mkdir -p $PROJETO/$repo)"
   done
 
-  titulo "Controle (gamepad)"
-  if command -v bluetoothctl >/dev/null; then
-    if bluetoothctl devices 2>/dev/null | grep -qi 'wireless controller'; then
-      ok "Controle DS4 pareado"
-    else
-      aviso "Controle DS4 nao pareado: Configuracoes > Bluetooth, segurar PS + Share ate piscar"
-    fi
-  else
-    aviso "Bluetooth indisponivel: o controle tambem funciona por cabo USB"
-  fi
+  # O controle (DS4) nao e conferido aqui: a conexao e manual, pelo Bluetooth do
+  # Ubuntu, a cada uso (docs/novo_computador.md, etapa 6).
 
   echo
   if [ "$FALHAS" -eq 0 ]; then echo "Nenhuma falha."; else echo "$FALHAS falha(s): ver acima."; fi

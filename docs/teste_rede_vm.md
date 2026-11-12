@@ -41,7 +41,7 @@ Antes de ligar o cabo, conferir:
 
 ```bash
 cd ~/projeto-vida/projeto-vida-controle-alto-nivel/scripts/rede
-./preparar_computador.sh --verificar     # nenhuma falha (os avisos de controle podem ficar)
+./preparar_computador.sh --verificar     # nenhuma falha
 systemctl status vida-rede               # active (running)
 ```
 
