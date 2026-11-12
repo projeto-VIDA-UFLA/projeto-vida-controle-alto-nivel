@@ -1,12 +1,21 @@
 # Operar o VIDA a partir de outro computador
 
-Roteiro para preparar um notebook com Ubuntu para operar o VIDA. As etapas 1 a 6 são
-feitas **uma vez** por computador, no laboratório, com internet. Depois disso, a operação
-é só a etapa 7: ligar o cabo e clicar em **Conectar à Odroid** no painel.
+Roteiro para preparar um notebook com Ubuntu para operar o VIDA.
 
-O notebook precisa de uma porta de rede cabeada (ou um adaptador USB-Ethernet), Wi-Fi para
-a internet e Bluetooth para o controle. Não é preciso instalar o ROS 2: tudo roda em
-containers Docker.
+| Quando | Etapas |
+|---|---|
+| **Uma vez** por computador, no laboratório, com internet | 1 a 5: Git, GitHub, Docker, repositórios e rede |
+| **A cada uso** | 6 e 7: conectar o controle, ligar o cabo e clicar em **Conectar à Odroid** no painel |
+
+**O que o notebook precisa:**
+- **Ubuntu Desktop** (22.04, como o notebook principal). A versão Server não serve: a rede
+  depende do NetworkManager, que só vem no Desktop.
+- Uma porta de rede cabeada (ou um adaptador USB-Ethernet), Wi-Fi para a internet e
+  Bluetooth para o controle.
+- Não é preciso instalar o ROS 2: tudo roda em containers Docker.
+
+**Não use este roteiro no notebook principal do VIDA.** Ele já tem a rede configurada à mão
+(IP fixo na porta cabeada e NAT próprio); o script de rede percebe isso e se recusa a instalar.
 
 ## 1. Git
 
@@ -93,7 +102,11 @@ O script:
 **Ele não muda a rede normal do computador.** Fora do perfil do VIDA, a porta cabeada continua
 no modo automático (DHCP), e reiniciar o computador sempre volta a esse modo.
 
-Para só conferir, sem mudar nada: `./preparar_computador.sh --verificar`.
+Para só conferir, sem mudar nada: `./preparar_computador.sh --verificar`. Num computador
+pronto, o resultado termina em **"Nenhuma falha."**, com o NAT, o comando e o serviço
+`vida-rede` marcados com ✓. Avisos `!` apontam o que falta (por exemplo, uma imagem ainda não
+construída) sem impedir a conexão.
+
 Para desfazer: `sudo ./preparar_computador.sh --remover`.
 
 ## 6. Controle (DS4) por Bluetooth
@@ -117,7 +130,8 @@ Se o controle desconectar durante o uso, repita os três passos.
    a internet e confere com ping. Deu certo quando o bloco **ESP32 / Odroid** fica verde.
    - Se a Odroid não responder em 10 s, o painel avisa: confira se ela está ligada e se o cabo é o dela.
 4. Opere pelo painel (rotas, iniciar o carro, gravar bag) e pelo controle, como no
-   [operacao.md](operacao.md).
+   [operacao.md](operacao.md). Os comandos `ros2` do terminal rodam dentro do container do
+   carro (seção "Comandos úteis" do operacao.md), porque o ROS 2 não está no Ubuntu.
 5. Ao terminar: pare o carro e clique em **Desconectar da Odroid**. A porta volta ao modo
    automático. Reiniciar o computador tem o mesmo efeito.
 
@@ -139,6 +153,19 @@ Exec=google-chrome --app=http://localhost:8080
 Icon=applications-science
 ```
 
+## Problemas comuns
+
+| Sintoma | O que fazer |
+|---|---|
+| Botão **Conectar à Odroid** não aparece | `systemctl status vida-rede` deve estar `active`. Se o painel subiu antes da instalação: `cd ~/projeto-vida/projeto-vida-painel && docker compose up -d --force-recreate` |
+| Botão cinza: "Ligue o cabo de rede até a Odroid" | Cabo solto ou na porta errada; com adaptador USB, confira se ele aparece em `nmcli device` |
+| "Mais de uma porta com cabo" | Deixe só o cabo da Odroid, ou pelo terminal: `vida-rede conectar <interface>` |
+| Conectou, mas "Odroid sem resposta" | A Odroid está ligada (leva ~1 min para subir)? O cabo é o dela? |
+| Odroid responde, mas sem correções RTK | O notebook está com internet no Wi-Fi? `vida-rede status` e, na Odroid, `ping 8.8.8.8` |
+| Computador sem internet por cabo depois de usar a primeira versão do script | Ver "VM preparada com a versão anterior" em [teste_rede_vm.md](teste_rede_vm.md) |
+| Controle não conecta | Etapa 6 de novo: PS + Share até piscar e conectar no Bluetooth |
+| Histórico das ações de rede | `journalctl -t vida-rede -t vida-odroid` |
+
 ## Atualizar depois
 
 ```bash
@@ -146,4 +173,5 @@ cd ~/projeto-vida/projeto-vida-controle-alto-nivel && git pull && docker compose
 cd ~/projeto-vida/projeto-vida-painel && git pull && docker compose up -d --build
 ```
 
-Se o `scripts/rede` mudou, rode `sudo ./preparar_computador.sh` de novo (ele atualiza o que já existe).
+Se o `scripts/rede` mudou, rode `sudo ./preparar_computador.sh` de novo (ele atualiza o que
+já existe). Para testar a rede sem o VIDA, numa máquina virtual: [teste_rede_vm.md](teste_rede_vm.md).

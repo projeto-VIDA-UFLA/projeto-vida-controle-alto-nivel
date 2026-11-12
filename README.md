@@ -2,6 +2,11 @@
 
 **Passo a passo completo (atualizar, gravar o firmware, ligar, manual, Stanley e gravar rota): [docs/operacao.md](docs/operacao.md).**
 
+**Operar de outro notebook** (Docker, repositórios, rede até a Odroid e o botão **Conectar à
+Odroid** do painel): [docs/novo_computador.md](docs/novo_computador.md). Os scripts de rede
+ficam em `scripts/rede/`; o teste deles numa máquina virtual, em
+[docs/teste_rede_vm.md](docs/teste_rede_vm.md).
+
 # Estimador de estado (EKF)
 O `robot_state_ekf` roda no Odroid (nível 2) e fica no repositório
 `projeto-vida-controle-baixo-nivel-odroid` (submodule em `ros_ws/src/robot_state_ekf`).
