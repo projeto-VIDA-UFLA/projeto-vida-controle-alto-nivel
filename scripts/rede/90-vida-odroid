@@ -1,0 +1,46 @@
+#!/bin/bash
+# Dispatcher do NetworkManager do VIDA (instalado por preparar_computador.sh em
+# /etc/NetworkManager/dispatcher.d/90-vida-odroid).
+#
+# Enquanto o perfil "VIDA Odroid" está ativo no cabo:
+#   - NAT: a Odroid (192.168.10.1) sai para a internet por qualquer outra
+#     interface do notebook (Wi-Fi, celular por USB...). O NTRIP precisa disso.
+#   - FORWARD liberado para a rede do cabo (o Docker deixa a politica em DROP).
+#   - INPUT liberado para a rede do cabo (DDS e ping, se o ufw estiver ligado).
+# Quando o perfil cai (botao, cabo removido), as regras saem.
+#
+# Nao depende do nome das interfaces: o cabo vem do NetworkManager ($1) e a
+# saida para a internet e qualquer uma (MASQUERADE sem -o).
+
+IFACE="$1"
+ACAO="$2"
+PERFIL="VIDA Odroid"
+REDE=192.168.10.0/24
+TAG=(-m comment --comment vida-odroid)
+
+[ "${CONNECTION_ID:-}" = "$PERFIL" ] || exit 0
+[ -n "$IFACE" ] || exit 0
+
+regra() {  # $1 = A (adicionar) ou D (remover); o resto = regra
+  local op=$1; shift
+  if [ "$op" = A ]; then
+    iptables -C "$@" 2>/dev/null || iptables -I "$@"
+  else
+    while iptables -D "$@" 2>/dev/null; do :; done
+  fi
+}
+
+case "$ACAO" in
+  up)   OP=A; sysctl -qw net.ipv4.ip_forward=1 ;;
+  down) OP=D ;;   # ip_forward fica em 1: o Docker tambem depende dele
+  *)    exit 0 ;;
+esac
+
+regra $OP POSTROUTING -t nat -s $REDE ! -d $REDE "${TAG[@]}" -j MASQUERADE
+regra $OP FORWARD -i "$IFACE" -s $REDE "${TAG[@]}" -j ACCEPT
+regra $OP FORWARD -o "$IFACE" -d $REDE -m conntrack --ctstate RELATED,ESTABLISHED "${TAG[@]}" -j ACCEPT
+regra $OP INPUT -i "$IFACE" -s $REDE "${TAG[@]}" -j ACCEPT
+
+if [ "$OP" = A ]; then FEITO=aplicadas; else FEITO=removidas; fi
+logger -t vida-odroid "perfil $ACAO em $IFACE: regras de NAT e firewall $FEITO" 2>/dev/null || true
+exit 0

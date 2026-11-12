@@ -1,0 +1,20 @@
+# Ponte entre o painel do VIDA (container) e o NetworkManager do Ubuntu.
+# Instalado por preparar_computador.sh em /etc/systemd/system/vida-rede.service.
+# O painel escreve pedidos em /run/vida-rede/pedido e le /run/vida-rede/estado.json;
+# o container nao ganha nenhuma permissao sobre a rede.
+[Unit]
+Description=VIDA: botao Conectar a Odroid do painel (perfil VIDA Odroid)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+ExecStart=/usr/local/bin/vida-rede servico
+Restart=always
+RestartSec=2
+RuntimeDirectory=vida-rede
+RuntimeDirectoryMode=0755
+# Mantem a pasta ao reiniciar o servico: o painel a monta e perderia a referencia.
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=multi-user.target

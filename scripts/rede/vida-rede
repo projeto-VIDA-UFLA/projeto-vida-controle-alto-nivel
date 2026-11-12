@@ -1,0 +1,183 @@
+#!/bin/bash
+# Liga e desliga a conexao do notebook com a Odroid pelo cabo de rede.
+# Instalado por preparar_computador.sh em /usr/local/bin/vida-rede.
+#
+#   vida-rede conectar [interface]   # perfil "VIDA Odroid" no cabo (+ NAT); sem sudo
+#   vida-rede desconectar            # cabo volta ao normal (DHCP)
+#   vida-rede status
+#   vida-rede servico                # so pelo systemd (vida-rede.service), como root
+#
+# O modo servico e a ponte com o painel, que roda em container e nao mexe na rede
+# do Ubuntu: a cada 2 s escreve o estado em $VIDA_REDE_DIR/estado.json e, a cada
+# 0,5 s, atende um pedido em $VIDA_REDE_DIR/pedido ("<id> conectar|desconectar").
+
+set -u
+export LC_ALL=C.UTF-8   # nmcli em ingles: "unmanaged", "on" (as mensagens deste script sao fixas)
+
+PERFIL="VIDA Odroid"
+IP_ODROID=192.168.10.1
+DIR_PONTE=${VIDA_REDE_DIR:-/run/vida-rede}
+
+perfil_existe() { nmcli -t -f NAME connection show 2>/dev/null | grep -qxF "$PERFIL"; }
+
+dispositivo_ativo() {  # interface em que o perfil esta ativo (vazio se nenhum)
+  nmcli -g GENERAL.DEVICES connection show "$PERFIL" 2>/dev/null | head -n1
+}
+
+interfaces_cabo() {  # interfaces ethernet gerenciadas pelo NetworkManager
+  nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null |
+    awk -F: '$2 == "ethernet" && $3 != "unmanaged" { print $1 }'
+}
+
+com_cabo() {  # 0 se a interface tem cabo ligado
+  [ "$(nmcli -g WIRED-PROPERTIES.CARRIER device show "$1" 2>/dev/null)" = "on" ]
+}
+
+interfaces_rota_padrao() {  # por onde o computador sai para a internet agora
+  ip route show default 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "dev") print $(i + 1) }'
+}
+
+# Portas candidatas para a Odroid: cabeadas, com cabo ligado e que nao sao a saida
+# para a internet (ex.: notebook com internet por cabo e adaptador USB para a
+# Odroid, ou uma VM com a internet numa placa virtual cabeada).
+interfaces_com_cabo() {
+  local i internet
+  internet=$(interfaces_rota_padrao)
+  for i in $(interfaces_cabo); do
+    com_cabo "$i" || continue
+    if [ "$i" != "$(dispositivo_ativo)" ] && echo "$internet" | grep -qxF "$i"; then continue; fi
+    echo "$i"
+  done
+}
+
+escolher_interface() {
+  local lista com
+  lista=$(interfaces_cabo)
+  if [ -z "$lista" ]; then
+    echo "Nenhuma porta de rede cabeada encontrada (use um adaptador USB-Ethernet)." >&2
+    return 1
+  fi
+  com=$(interfaces_com_cabo)
+  if [ -z "$com" ]; then
+    echo "Nenhuma porta com cabo ligado. Ligue o cabo até a Odroid." >&2
+    return 1
+  fi
+  if [ "$(echo "$com" | wc -l)" -gt 1 ]; then
+    echo "Mais de uma porta com cabo ($(echo $com)). Deixe só o cabo da Odroid ou indique: vida-rede conectar <interface>" >&2
+    return 1
+  fi
+  echo "$com"
+}
+
+odroid_responde() { ping -n -c1 -W1 "$IP_ODROID" >/dev/null 2>&1; }
+
+# Retorno: 0 = conectado e a Odroid responde; 2 = conectado sem resposta; 1 = falha.
+conectar() {
+  local dev=${1:-}
+  perfil_existe || { echo "Perfil \"$PERFIL\" não instalado: rode sudo ./preparar_computador.sh" >&2; return 1; }
+  if [ -z "$dev" ]; then dev=$(dispositivo_ativo); fi
+  if [ -z "$dev" ]; then dev=$(escolher_interface) || return 1; fi
+  if [ "$(dispositivo_ativo)" != "$dev" ]; then
+    echo "Conectando \"$PERFIL\" em $dev..."
+    nmcli connection up "$PERFIL" ifname "$dev" >/dev/null || {
+      echo "O NetworkManager recusou a conexão em $dev." >&2; return 1; }
+  fi
+  for _ in $(seq 1 10); do
+    if odroid_responde; then echo "Conectado em $dev; Odroid respondendo em $IP_ODROID."; return 0; fi
+    sleep 1
+  done
+  echo "Conectado em $dev, mas a Odroid não responde ao ping (ligada? cabo certo?)." >&2
+  return 2
+}
+
+desconectar() {
+  local dev
+  dev=$(dispositivo_ativo)
+  if [ -z "$dev" ]; then echo "\"$PERFIL\" já está desconectado."; return 0; fi
+  # So "down": o NetworkManager volta sozinho ao perfil automatico (DHCP).
+  # "nmcli device up" nao serve aqui, porque poderia escolher o proprio perfil
+  # do VIDA de novo.
+  nmcli connection down "$PERFIL" >/dev/null || { echo "O NetworkManager recusou desconectar." >&2; return 1; }
+  echo "Desconectado de $dev; a porta volta ao modo automático (DHCP)."
+}
+
+status() {
+  local dev
+  if ! perfil_existe; then echo "Perfil \"$PERFIL\": não instalado"; return 1; fi
+  dev=$(dispositivo_ativo)
+  if [ -n "$dev" ]; then
+    echo "Perfil \"$PERFIL\": ativo em $dev"
+    if odroid_responde; then echo "Odroid: respondendo"; else echo "Odroid: sem resposta"; fi
+  else
+    echo "Perfil \"$PERFIL\": desconectado"
+    if [ -n "$(interfaces_com_cabo)" ]; then echo "Cabo: ligado"; else echo "Cabo: desligado"; fi
+  fi
+}
+
+# ------------------------------------------------------------ ponte com o painel
+json_texto() {  # texto -> string JSON (aspas, barras e quebras de linha)
+  printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\n\r\t' '   ')"
+}
+json_bool() { if [ "$1" = 1 ]; then printf true; else printf false; fi; }
+
+OCUPADO=""
+RESULTADO=null
+
+escrever_estado() {
+  local instalado=0 ativo=0 cabo=0 dev="" tmp
+  if perfil_existe; then
+    instalado=1
+    dev=$(dispositivo_ativo)
+    [ -n "$dev" ] && ativo=1
+    [ -n "$(interfaces_com_cabo)" ] && cabo=1
+  fi
+  tmp="$DIR_PONTE/.estado.json"
+  printf '{"quando": %s, "instalado": %s, "ativo": %s, "interface": %s, "cabo": %s, "ocupado": %s, "resultado": %s}\n' \
+    "$(date +%s)" "$(json_bool $instalado)" "$(json_bool $ativo)" "$(json_texto "$dev")" \
+    "$(json_bool $cabo)" "$(json_texto "$OCUPADO")" "$RESULTADO" > "$tmp" && mv -f "$tmp" "$DIR_PONTE/estado.json"
+}
+
+atender() {  # $1 = id, $2 = acao
+  local id=$1 acao=$2 saida codigo ok=0 ping=0
+  OCUPADO=$acao
+  escrever_estado
+  saida=$("$acao" 2>&1); codigo=$?
+  OCUPADO=""
+  [ "$codigo" -ne 1 ] && ok=1
+  [ "$acao" = conectar ] && [ "$codigo" -eq 0 ] && ping=1
+  RESULTADO=$(printf '{"id": %s, "acao": %s, "ok": %s, "ping": %s, "interface": %s, "mensagem": %s}' \
+    "$(json_texto "$id")" "$(json_texto "$acao")" "$(json_bool $ok)" "$(json_bool $ping)" \
+    "$(json_texto "$(dispositivo_ativo)")" "$(json_texto "$saida")")
+  logger -t vida-rede "$acao (pedido $id): $saida" 2>/dev/null || true
+  escrever_estado
+}
+
+servico() {
+  local n=0 id acao
+  mkdir -p "$DIR_PONTE"
+  chmod 0755 "$DIR_PONTE"
+  rm -f "$DIR_PONTE/pedido"
+  while true; do
+    if [ -f "$DIR_PONTE/pedido" ]; then
+      id="" acao=""
+      read -r id acao < "$DIR_PONTE/pedido" || true
+      rm -f "$DIR_PONTE/pedido"
+      if [[ "$id" =~ ^[A-Za-z0-9-]{1,40}$ ]] && { [ "$acao" = conectar ] || [ "$acao" = desconectar ]; }; then
+        atender "$id" "$acao"
+      fi
+      n=1
+    elif [ $((n % 4)) -eq 0 ]; then
+      escrever_estado
+    fi
+    n=$((n + 1))
+    sleep 0.5
+  done
+}
+
+case "${1:-status}" in
+  conectar)    conectar "${2:-}" ;;
+  desconectar) desconectar ;;
+  status)      status ;;
+  servico)     servico ;;
+  *) echo "Uso: vida-rede {conectar [interface]|desconectar|status}" >&2; exit 64 ;;
+esac
