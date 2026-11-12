@@ -2,10 +2,16 @@
 # Liga e desliga a conexao do notebook com a Odroid pelo cabo de rede.
 # Instalado por preparar_computador.sh em /usr/local/bin/vida-rede.
 #
-#   vida-rede conectar [interface]   # perfil "VIDA Odroid" no cabo (+ NAT); sem sudo
-#   vida-rede desconectar            # cabo volta ao normal (DHCP)
+#   vida-rede conectar [interface]   # perfil "VIDA Odroid" no cabo (+ NAT)
+#   vida-rede desconectar            # porta de volta ao modo automatico (DHCP)
 #   vida-rede status
 #   vida-rede servico                # so pelo systemd (vida-rede.service), como root
+#
+# O perfil "VIDA Odroid" existe so na memoria do NetworkManager (save no), preso a
+# porta escolhida, e so enquanto a conexao esta ativa: "desconectar" o apaga e o
+# reinicio do computador tambem. Um perfil gravado em disco e sem interface fixa
+# seria compativel com todas as portas cabeadas, e o NetworkManager deixaria de
+# criar os perfis automaticos "Wired connection" (DHCP) delas.
 #
 # O modo servico e a ponte com o painel, que roda em container e nao mexe na rede
 # do Ubuntu: a cada 2 s escreve o estado em $VIDA_REDE_DIR/estado.json e, a cada
@@ -15,13 +21,25 @@ set -u
 export LC_ALL=C.UTF-8   # nmcli em ingles: "unmanaged", "on" (as mensagens deste script sao fixas)
 
 PERFIL="VIDA Odroid"
+IP_NOTEBOOK=192.168.10.2/24   # tem que ser .2: e o gateway configurado na Odroid
 IP_ODROID=192.168.10.1
 DIR_PONTE=${VIDA_REDE_DIR:-/run/vida-rede}
+DISPATCHER=${VIDA_REDE_DISPATCHER:-/etc/NetworkManager/dispatcher.d/90-vida-odroid}
 
-perfil_existe() { nmcli -t -f NAME connection show 2>/dev/null | grep -qxF "$PERFIL"; }
+instalado() { [ -x "$DISPATCHER" ]; }
+
+uuids_perfil() {  # perfis com o nome do VIDA (normalmente nenhum ou um)
+  nmcli -t -f UUID,NAME connection show 2>/dev/null | awk -F: -v p="$PERFIL" '$2 == p { print $1 }'
+}
+
+apagar_perfis() {
+  local u
+  for u in $(uuids_perfil); do nmcli connection delete uuid "$u" >/dev/null 2>&1; done
+}
 
 dispositivo_ativo() {  # interface em que o perfil esta ativo (vazio se nenhum)
-  nmcli -g GENERAL.DEVICES connection show "$PERFIL" 2>/dev/null | head -n1
+  nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null |
+    awk -F: -v p="$PERFIL" '$1 == p && $2 != "" { print $2; exit }'
 }
 
 interfaces_cabo() {  # interfaces ethernet gerenciadas pelo NetworkManager
@@ -41,11 +59,12 @@ interfaces_rota_padrao() {  # por onde o computador sai para a internet agora
 # para a internet (ex.: notebook com internet por cabo e adaptador USB para a
 # Odroid, ou uma VM com a internet numa placa virtual cabeada).
 interfaces_com_cabo() {
-  local i internet
+  local i internet ativo
   internet=$(interfaces_rota_padrao)
+  ativo=$(dispositivo_ativo)
   for i in $(interfaces_cabo); do
     com_cabo "$i" || continue
-    if [ "$i" != "$(dispositivo_ativo)" ] && echo "$internet" | grep -qxF "$i"; then continue; fi
+    if [ "$i" != "$ativo" ] && echo "$internet" | grep -qxF "$i"; then continue; fi
     echo "$i"
   done
 }
@@ -73,14 +92,31 @@ odroid_responde() { ping -n -c1 -W1 "$IP_ODROID" >/dev/null 2>&1; }
 
 # Retorno: 0 = conectado e a Odroid responde; 2 = conectado sem resposta; 1 = falha.
 conectar() {
-  local dev=${1:-}
-  perfil_existe || { echo "Perfil \"$PERFIL\" não instalado: rode sudo ./preparar_computador.sh" >&2; return 1; }
-  if [ -z "$dev" ]; then dev=$(dispositivo_ativo); fi
-  if [ -z "$dev" ]; then dev=$(escolher_interface) || return 1; fi
-  if [ "$(dispositivo_ativo)" != "$dev" ]; then
+  local dev=${1:-} ativo
+  instalado || { echo "vida-rede não instalado: rode sudo ./preparar_computador.sh" >&2; return 1; }
+  ativo=$(dispositivo_ativo)
+  if [ -n "$ativo" ] && [ -n "$dev" ] && [ "$dev" != "$ativo" ]; then
+    echo "Já conectado em $ativo. Desconecte antes de trocar de porta." >&2
+    return 1
+  fi
+  if [ -n "$ativo" ]; then
+    dev=$ativo
+  else
+    [ -n "$dev" ] || dev=$(escolher_interface) || return 1
     echo "Conectando \"$PERFIL\" em $dev..."
-    nmcli connection up "$PERFIL" ifname "$dev" >/dev/null || {
-      echo "O NetworkManager recusou a conexão em $dev." >&2; return 1; }
+    apagar_perfis   # sobra de uma conexao interrompida
+    if ! nmcli connection add save no type ethernet con-name "$PERFIL" ifname "$dev" \
+        ipv4.method manual ipv4.addresses "$IP_NOTEBOOK" ipv4.never-default yes \
+        ipv4.ignore-auto-dns yes ipv6.method disabled connection.autoconnect no >/dev/null; then
+      echo "O NetworkManager recusou criar o perfil em $dev." >&2
+      return 1
+    fi
+    if ! nmcli connection up "$PERFIL" ifname "$dev" >/dev/null; then
+      apagar_perfis
+      nmcli -w 0 device connect "$dev" >/dev/null 2>&1
+      echo "O NetworkManager recusou a conexão em $dev." >&2
+      return 1
+    fi
   fi
   for _ in $(seq 1 10); do
     if odroid_responde; then echo "Conectado em $dev; Odroid respondendo em $IP_ODROID."; return 0; fi
@@ -93,23 +129,38 @@ conectar() {
 desconectar() {
   local dev
   dev=$(dispositivo_ativo)
-  if [ -z "$dev" ]; then echo "\"$PERFIL\" já está desconectado."; return 0; fi
-  # So "down": o NetworkManager volta sozinho ao perfil automatico (DHCP).
-  # "nmcli device up" nao serve aqui, porque poderia escolher o proprio perfil
-  # do VIDA de novo.
-  nmcli connection down "$PERFIL" >/dev/null || { echo "O NetworkManager recusou desconectar." >&2; return 1; }
-  echo "Desconectado de $dev; a porta volta ao modo automático (DHCP)."
+  if [ -z "$dev" ] && [ -z "$(uuids_perfil)" ]; then
+    echo "\"$PERFIL\" já está desconectado."
+    return 0
+  fi
+  # "down" antes de apagar: o dispatcher tira o NAT e o firewall no "down".
+  if [ -n "$dev" ]; then
+    nmcli connection down "$PERFIL" >/dev/null 2>&1 || true
+  fi
+  apagar_perfis
+  if [ -n "$(uuids_perfil)" ]; then
+    echo "O NetworkManager recusou apagar o perfil \"$PERFIL\"." >&2
+    return 1
+  fi
+  if [ -n "$dev" ]; then
+    # Sem o perfil do VIDA, o NetworkManager escolhe o perfil automatico da porta
+    # (DHCP), como ao ligar um cabo. -w 0: nao espera o DHCP (a Odroid nao tem).
+    nmcli -w 0 device connect "$dev" >/dev/null 2>&1 || true
+    echo "Desconectado de $dev; a porta volta ao modo automático (DHCP)."
+  else
+    echo "Perfil \"$PERFIL\" removido."
+  fi
 }
 
 status() {
   local dev
-  if ! perfil_existe; then echo "Perfil \"$PERFIL\": não instalado"; return 1; fi
+  if ! instalado; then echo "vida-rede: não instalado"; return 1; fi
   dev=$(dispositivo_ativo)
   if [ -n "$dev" ]; then
-    echo "Perfil \"$PERFIL\": ativo em $dev"
-    if odroid_responde; then echo "Odroid: respondendo"; else echo "Odroid: sem resposta"; fi
+    echo "Odroid: conectado em $dev"
+    if odroid_responde; then echo "Ping: respondendo"; else echo "Ping: sem resposta"; fi
   else
-    echo "Perfil \"$PERFIL\": desconectado"
+    echo "Odroid: desconectado"
     if [ -n "$(interfaces_com_cabo)" ]; then echo "Cabo: ligado"; else echo "Cabo: desligado"; fi
   fi
 }
@@ -124,16 +175,16 @@ OCUPADO=""
 RESULTADO=null
 
 escrever_estado() {
-  local instalado=0 ativo=0 cabo=0 dev="" tmp
-  if perfil_existe; then
-    instalado=1
+  local inst=0 ativo=0 cabo=0 dev="" tmp
+  if instalado; then
+    inst=1
     dev=$(dispositivo_ativo)
     [ -n "$dev" ] && ativo=1
     [ -n "$(interfaces_com_cabo)" ] && cabo=1
   fi
   tmp="$DIR_PONTE/.estado.json"
   printf '{"quando": %s, "instalado": %s, "ativo": %s, "interface": %s, "cabo": %s, "ocupado": %s, "resultado": %s}\n' \
-    "$(date +%s)" "$(json_bool $instalado)" "$(json_bool $ativo)" "$(json_texto "$dev")" \
+    "$(date +%s)" "$(json_bool $inst)" "$(json_bool $ativo)" "$(json_texto "$dev")" \
     "$(json_bool $cabo)" "$(json_texto "$OCUPADO")" "$RESULTADO" > "$tmp" && mv -f "$tmp" "$DIR_PONTE/estado.json"
 }
 
@@ -173,6 +224,12 @@ servico() {
     sleep 0.5
   done
 }
+
+# Criar e apagar perfis exige root (ou a senha, pelo polkit): pelo terminal, usa sudo.
+case "${1:-status}" in
+  conectar|desconectar)
+    if [ "$(id -u)" -ne 0 ] && [ -z "${VIDA_REDE_SEM_SUDO:-}" ]; then exec sudo -- "$0" "$@"; fi ;;
+esac
 
 case "${1:-status}" in
   conectar)    conectar "${2:-}" ;;

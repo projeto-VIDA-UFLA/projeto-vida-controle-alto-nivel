@@ -82,7 +82,9 @@ sudo ./preparar_computador.sh
 ```
 
 O script:
-- cria o perfil de rede **"VIDA Odroid"** (`192.168.10.2`), que só é ativado pelo botão do painel ou pelo comando `vida-rede`;
+- **não grava nenhum perfil de rede**: ao conectar (botão do painel ou comando `vida-rede`),
+  o perfil **"VIDA Odroid"** (`192.168.10.2`) é criado só na memória, preso à porta do cabo,
+  e é apagado ao desconectar ou ao reiniciar;
 - instala o compartilhamento de internet com a Odroid (NAT), que só fica ativo junto com o perfil;
 - instala o comando `vida-rede` e o serviço `vida-rede`, que executa o botão do painel (o
   painel roda em container e não mexe na rede do Ubuntu: ele só pede ao serviço);
@@ -114,7 +116,7 @@ escolha "Wireless Controller". O pareamento fica salvo; nas próximas vezes bast
 Pelo terminal, o mesmo funciona com:
 
 ```bash
-vida-rede conectar      # configura a porta e confere o ping
+vida-rede conectar      # configura a porta e confere o ping (pede a senha: sudo)
 vida-rede status
 vida-rede desconectar   # porta de volta ao modo automático
 ```

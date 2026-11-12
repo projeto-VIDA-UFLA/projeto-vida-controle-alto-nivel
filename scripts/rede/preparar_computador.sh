@@ -6,11 +6,13 @@
 #   sudo ./preparar_computador.sh --remover desfaz a instalacao
 #
 # O que a instalacao faz:
-#   1. Perfil "VIDA Odroid" no NetworkManager: 192.168.10.2/24, sem gateway,
-#      sem conexao automatica e sem interface fixa (serve para qualquer porta
-#      cabeada). O IP tem que ser .2: e o gateway configurado na Odroid.
+#   1. Nenhum perfil de rede gravado. O vida-rede cria o perfil "VIDA Odroid"
+#      (192.168.10.2/24) so na memoria, preso a porta, ao conectar, e o apaga ao
+#      desconectar; o reinicio tambem o apaga. Um perfil gravado e sem porta fixa
+#      faria o NetworkManager parar de criar os perfis automaticos (DHCP) das
+#      portas cabeadas. O IP tem que ser .2: e o gateway configurado na Odroid.
 #   2. Dispatcher 90-vida-odroid: NAT e firewall so enquanto o perfil esta ativo.
-#   3. Comando vida-rede (conectar / desconectar / status), sem sudo.
+#   3. Comando vida-rede (conectar / desconectar / status).
 #   4. Servico vida-rede: ponte com o botao "Conectar a Odroid" do painel, que
 #      roda em container e so troca arquivos em /run/vida-rede.
 #
@@ -98,7 +100,14 @@ verificar() {
 
   checar_conflitos && ok "Sem configuracao antiga para a Odroid"
 
-  if perfil_existe; then ok "Perfil \"$PERFIL\" instalado"; else aviso "Perfil \"$PERFIL\" nao instalado"; fi
+  local ativo
+  ativo=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null |
+          awk -F: -v p="$PERFIL" '$1 == p && $2 != "" { print $2; exit }')
+  if [ -n "$ativo" ]; then
+    ok "Conectado a Odroid em $ativo"
+  elif perfil_existe; then
+    falha "Perfil \"$PERFIL\" parado (versao anterior, gravado em disco): rode sudo $0 para remover"
+  fi
   [ -x "$DISPATCHER" ] && ok "NAT do VIDA instalado ($DISPATCHER)" || aviso "NAT do VIDA nao instalado"
   [ -x "$CLI" ] && ok "Comando vida-rede instalado" || aviso "Comando vida-rede nao instalado"
   if systemctl is-active --quiet vida-rede 2>/dev/null; then
@@ -185,24 +194,13 @@ instalar() {
   systemctl restart vida-rede.service
   ok "Servico vida-rede ativo (botao do painel)"
 
-  local opcoes=(
-    ipv4.method manual
-    ipv4.addresses "$IP_NOTEBOOK/$REDE_PREFIXO"
-    ipv4.gateway ""
-    ipv4.never-default yes
-    ipv4.ignore-auto-dns yes
-    ipv6.method disabled
-    connection.autoconnect no
-  )
+  # Versao anterior deste script gravava o perfil sem porta fixa: apagar e
+  # devolver as portas cabeadas aos perfis automaticos (DHCP).
   if perfil_existe; then
-    nmcli connection modify "$PERFIL" "${opcoes[@]}"
-    ok "Perfil \"$PERFIL\" atualizado"
-  else
-    # Sem ifname: o perfil serve para qualquer porta cabeada.
-    nmcli connection add type ethernet con-name "$PERFIL" "${opcoes[@]}" >/dev/null 2>&1 \
-      || nmcli connection add type ethernet con-name "$PERFIL" ifname '*' "${opcoes[@]}" >/dev/null
-    ok "Perfil \"$PERFIL\" criado"
+    VIDA_REDE_SEM_SUDO=1 "$CLI" desconectar >/dev/null 2>&1 || true
+    ok "Perfil \"$PERFIL\" da versao anterior removido"
   fi
+  reativar_portas
 
   verificar
   cat <<EOF
@@ -212,17 +210,32 @@ Pronto. Se o painel ja estava rodando, recrie-o uma vez para ele enxergar o serv
 
 Com o cabo ligado na Odroid:
   botao "Conectar a Odroid" no painel, ou: vida-rede conectar
-  vida-rede desconectar   # a porta volta ao normal (DHCP)
+  vida-rede desconectar   # a porta volta ao normal (DHCP); pede a senha (sudo)
 EOF
+}
+
+# Portas cabeadas paradas (ex.: depois de apagar o perfil antigo) voltam ao
+# perfil automatico (DHCP), como ao ligar um cabo. -w 0: nao espera o DHCP.
+reativar_portas() {
+  local dev
+  for dev in $(nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null |
+               awk -F: '$2 == "ethernet" && $3 == "disconnected" { print $1 }'); do
+    nmcli -w 0 device connect "$dev" >/dev/null 2>&1 || true
+  done
 }
 
 remover() {
   exigir_root --remover
   titulo "Removendo"
   if perfil_existe; then
-    # Derrubar antes de apagar: o dispatcher tira as regras no "down".
-    nmcli connection down "$PERFIL" >/dev/null 2>&1 || true
-    nmcli connection delete "$PERFIL" >/dev/null
+    # "down" antes de apagar: o dispatcher tira as regras no "down".
+    if [ -x "$CLI" ]; then
+      VIDA_REDE_SEM_SUDO=1 "$CLI" desconectar >/dev/null 2>&1 || true
+    fi
+    for u in $(nmcli -t -f UUID,NAME connection show | awk -F: -v p="$PERFIL" '$2 == p { print $1 }'); do
+      nmcli connection delete uuid "$u" >/dev/null 2>&1 || true
+    done
+    reativar_portas
     ok "Perfil \"$PERFIL\" removido"
   fi
   if [ -e "$SERVICO" ]; then

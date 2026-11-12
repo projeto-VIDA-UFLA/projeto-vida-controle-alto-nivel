@@ -56,8 +56,9 @@ systemctl status vida-rede               # active (running)
 | 5 | `sudo iptables -S \| grep vida` e `sudo iptables -t nat -S \| grep vida` | 3 regras (INPUT e 2 FORWARD) e 1 MASQUERADE |
 | 6 | No servidor: internet pelo cabo (ver abaixo) | Responde |
 | 7 | Clicar em **Desconectar da Odroid** e confirmar | Botão volta a **Conectar**; `ip addr` sem `192.168.10.2`; os dois `iptables` acima sem regras |
-| 8 | Conectar de novo e **reiniciar a VM** | Volta desconectada: porta em DHCP e sem regras `vida` |
-| 9 | Com o servidor desligado (ou o cabo em outro aparelho), clicar em Conectar | Depois de ~10 s: aviso "Odroid sem resposta" |
+| 8 | Conectar de novo e **reiniciar a VM** | Volta desconectada, **com internet** pela placa NAT; `nmcli connection show` lista os "Wired connection" e nenhum "VIDA Odroid"; sem regras `vida` |
+| 9 | Depois do reinício, ligar a porta do cabo num roteador | Pega IP por DHCP normalmente |
+| 10 | Com o servidor desligado (ou o cabo em outro aparelho), clicar em Conectar | Depois de ~10 s: aviso "Odroid sem resposta" |
 
 **Internet do servidor pelo cabo (passo 6).** No servidor, `ip route get 8.8.8.8`:
 - mostrou `via 192.168.10.2`: está usando o cabo. Testar com `ping 8.8.8.8`;
@@ -67,6 +68,18 @@ systemctl status vida-rede               # active (running)
 
 **Pelo terminal** o mesmo teste funciona com `vida-rede conectar`, `vida-rede status` e
 `vida-rede desconectar`.
+
+## VM preparada com a versão anterior (perfil gravado)
+
+A primeira versão do script gravava o perfil "VIDA Odroid" sem porta fixa. Com isso, depois
+de reiniciar, nenhuma porta cabeada pegava IP (nem a placa NAT da VM). Para recuperar:
+
+```bash
+sudo nmcli connection delete "VIDA Odroid"   # devolve a internet à placa NAT
+sudo nmcli device connect ens33              # se ela não voltar sozinha (ver o nome em: nmcli device)
+cd ~/projeto-vida/projeto-vida-controle-alto-nivel && git pull
+cd scripts/rede && sudo ./preparar_computador.sh   # instala a versão nova
+```
 
 ## Se algo falhar
 
