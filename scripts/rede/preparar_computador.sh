@@ -155,7 +155,7 @@ verificar() {
   done
 
   # O controle (DS4) nao e conferido aqui: a conexao e manual, pelo Bluetooth do
-  # Ubuntu, a cada uso (docs/novo_computador.md, etapa 6).
+  # Ubuntu, a cada uso (ver o guia de operacao em github.com/projeto-VIDA-UFLA).
 
   echo
   if [ "$FALHAS" -eq 0 ]; then echo "Nenhuma falha."; else echo "$FALHAS falha(s): ver acima."; fi

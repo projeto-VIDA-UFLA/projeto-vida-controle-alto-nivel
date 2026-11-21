@@ -1,118 +1,128 @@
-# Instruções para executar o programa
+# Projeto VIDA: nível de navegação (notebook)
 
-**Passo a passo completo (atualizar, gravar o firmware, ligar, manual, Stanley e gravar rota): [docs/operacao.md](docs/operacao.md).**
+Software executado no **notebook de operação** do **VIDA (Veículo Inteligente de Desenvolvimento
+Aplicado)**, protótipo de veículo autônomo do Laboratório de Mobilidade Terrestre (LMT) da UFLA.
 
-**Operar de outro notebook** (Docker, repositórios, rede até a Odroid e o botão **Conectar à
-Odroid** do painel): [docs/novo_computador.md](docs/novo_computador.md). Os scripts de rede
-ficam em `scripts/rede/`; o teste deles numa máquina virtual, em
-[docs/teste_rede_vm.md](docs/teste_rede_vm.md).
+Reúne a operação manual pelo gamepad, o controlador de seguimento de trajetória **Stanley**, o
+**gerenciador de modos** (manual e automático), as ferramentas de gravação e tratamento de rotas,
+um simulador do veículo e os scripts que preparam a rede de um notebook para falar com a Odroid.
+Tudo roda em ROS 2 Humble, dentro de containers Docker: não é preciso instalar o ROS 2 no notebook.
 
-# Estimador de estado (EKF)
-O `robot_state_ekf` roda no Odroid (nível 2) e fica no repositório
-`projeto-vida-controle-baixo-nivel-odroid` (submodule em `ros_ws/src/robot_state_ekf`).
-O notebook recebe `/robot_state/odom` e `/robot_state/status` e chama o serviço
-`/robot_state_ekf_node/reset` ao entrar no modo automático.
+- **Visão geral do projeto e como operar o veículo:** [projeto-VIDA-UFLA](https://github.com/projeto-VIDA-UFLA)
+- **Nós por máquina:** [`docs/arquitetura_navegacao.pdf`](docs/arquitetura_navegacao.pdf)
 
-O `setup.sh` continua inicializando submodules, caso o projeto volte a ter algum.
+## Lugar na arquitetura
 
-# Navegação (`vida_navigation`)
-Visão geral dos nós por máquina em `docs/arquitetura_navegacao.pdf`.
-
-Caminhos ficam em CSV (latitude/longitude, cabeçalho `# vida_path v1`), em
-`ros_ws/src/vida_navigation/paths/`. Duas origens:
-
-    # desenhado no Google Earth (Salvar lugar como... KML)
-    ros2 run vida_navigation path_tools from-kml pista.kml pista.csv --name pista_ufla
-    # gravado dirigindo com o controle (EKF rodando, RTK FIXED)
-    ros2 run vida_navigation path_recorder --ros-args -p output_file:=volta_bruta.csv
-    ros2 run vida_navigation path_tools from-recording volta_bruta.csv pista.csv
-
-Cada comando valida o caminho (raio mínimo 4 m com ±20° e recomendado de 6 m a
-2,5 m/s, reta inicial de 10 m para a manobra de inicialização, lacunas sem
-FIXED na gravação) e salva um
-gráfico `.png` ao lado. `path_tools validate` e `path_tools compare` (Google x
-gravado) também estão disponíveis. Testes:
-
-    cd ros_ws/src/vida_navigation && python3 -m pytest test
-
-## Modo automático (Stanley)
-
-    ros2 launch vida_navigation navigation.launch.py path_file:=/caminho/pista.csv
-
-Pelo Docker (a pasta `../analises` do notebook aparece como `/caminhos`):
-
-    docker compose stop ros_ws
-    VIDA_PATH_FILE=/caminhos/<pasta>/<caminho>.csv docker compose --profile navegacao up -d navegacao
-    # de volta ao manual:
-    docker compose stop navegacao && docker compose up -d ros_ws
-
-Sobe o gamepad (publicando em `/gamepad/*`), o `mode_manager` (único que
-publica `/vida/control/*/reference`), o `stanley` e o `path_publisher`.
-Parâmetros em `ros_ws/src/vida_navigation/config/navigation.yaml`.
-
-| Gamepad (5 s) | Ação | Vibração |
+| Nível | Hardware | Repositório |
 |---|---|---|
-| △ | entra no automático | 1 pulso: aceito; 2 longos: Stanley no comando |
-| □ | sai do automático (para) | 4 curtos: de volta ao manual |
-| L2 | aborta e freia (qualquer momento) | contínua: aborto |
-| X / O | modo bancada (ESP32) | contínua / 3 pulsos |
-| R1 (3 s) | modo manobra: freio solto para empurrar (ESP32) | 2 curtos / 1 longo |
+| 1 | ESP32 | [projeto-vida-firmware-esp32](https://github.com/projeto-VIDA-UFLA/projeto-vida-firmware-esp32): sensores, controle de baixo nível e segurança |
+| 2 | Odroid N2 | [projeto-vida-controle-baixo-nivel-odroid](https://github.com/projeto-VIDA-UFLA/projeto-vida-controle-baixo-nivel-odroid): agente micro-ROS, GNSS RTK, EKF e enable lógico |
+| 3 | **Notebook** | **Este repositório:** gamepad, Stanley e gerenciador de modos; [projeto-vida-painel](https://github.com/projeto-VIDA-UFLA/projeto-vida-painel): painel de operação |
 
-Pedido recusado: 6 pulsos rápidos (motivo no log e em `/navigation/mode`).
-Para entrar: parado, ESP32 liberando, GPS com correções RTK e antena a até
-3 m do início do caminho. Sequência: alinha as rodas, reinicia o EKF (origem
-e bias, parado), anda reto a 2 m/s até o heading pelo GPS (RTK FIXED; ~5-8 m),
-confere o alinhamento (< 0,5 m, < 15°) e segue uma volta a 2,5 m/s (abaixo de
-~2 m/s a controladora de tração pulsa). No fim, freia com tudo na distância de
-frenagem (v²/2a + v·atraso, a = 1,5 m/s² medido). Ao voltar ao manual, a tração
-só volta ao gamepad depois de soltar o R2.
+## Estrutura do repositório
 
-## Simulação
+```text
+docker-compose.yml           Serviços ros_ws (manual) e navegacao (manual + Stanley)
+ros_ws/
+  Dockerfile                 Imagem vida-ros-ws:humble (também é a base do painel)
+  src/
+    control_pkg/             Leitura do gamepad (gamepad_reader) e referências do modo manual
+    vida_navigation/         Stanley, gerenciador de modos, rotas e simulador
+      config/navigation.yaml Parâmetros do Stanley e do gerenciador de modos
+      paths/                 Rotas de exemplo
+      test/                  Testes (pytest)
+    vida_interfaces/         Mensagens ROS 2 do VIDA
+scripts/rede/                Conexão de um notebook com a Odroid (serviço vida-rede)
+docs/                        Diagrama da arquitetura de navegação
+```
 
-    ros2 launch vida_navigation simulation.launch.py              # caminho de exemplo
-    ros2 run vida_navigation sim_scenarios volta                  # operador simulado
+## Nós
 
-O `sim_vehicle` substitui ESP32 + GPS + EKF com os mesmos tópicos, com os
-números medidos no chão em 30/10 (entre-eixos efetivo de 1,42 m, freio total
-~1,7 m/s², roda livre 0,5 m/s², rampa de 40°/s no esterçamento, GPS a 1 Hz).
-A 2,5 m/s, numa pista com curvas de 6 m: erro lateral médio de ~0,14 m. Cenários:
-`volta`, `float`, `l2`, `quadrado`, `rtk_perdido`, `gps_perdido`,
-`esp_bloqueio`, `longe` (com `start_back_m:=6.0`) e `desalinhado` (com
-`start_yaw_deg:=40.0`). Com `gamepad:=true` dá para dirigir o simulador.
+| Nó | Pacote | Função |
+|---|---|---|
+| `gamepad_reader` | `control_pkg` | Lê o controle (DS4) e gera as referências de esterçamento e velocidade e o sinal `/gamepad/enabled` |
+| `mode_manager` | `vida_navigation` | Único que publica as referências para o ESP32: repassa o gamepad no manual e o Stanley no automático; conduz a entrada (alinhamento, calibração do EKF e manobra inicial) e a saída do automático |
+| `stanley` | `vida_navigation` | Controlador Stanley: erro lateral, erro de rumo, antecipação pela curvatura e amortecimento do giro |
+| `path_publisher` | `vida_navigation` | Publica a rota no referencial do EKF, para visualização (o Stanley lê o arquivo da rota diretamente) |
+| `path_recorder` / `path_tools` | `vida_navigation` | Gravação de rotas pelo EKF e tratamento, validação e comparação de rotas |
+| `sim_vehicle` / `sim_scenarios` | `vida_navigation` | Simulador do veículo (substitui ESP32, GNSS e EKF) e cenários de teste |
 
-Ajuste de 30/10 (1º Stanley no chão): o esterçamento real tem ~0,3 s de atraso
-e sobressinal, e o simulador foi calibrado com esse teste. Para 1,5 m/s:
-`gain_k` 1,5 e `yaw_damping_s` 0,2 (amortecimento do giro em excesso).
-Pendências para a pista: GPS a 1 Hz gera degraus de até ~0,2 m nas curvas (tentar 2 Hz no
-ZED-F9R) e a escala dos encoders está ~3,5% acima do GPS.
+## Serviços Docker
 
-# Instalação CMake
-1- sudo apt update
-2- sudo apt upgrade
-3- sudo apt install cmake
+| Serviço | Container | O que sobe |
+|---|---|---|
+| `ros_ws` | `ros_ws` | Só o gamepad (modo manual) |
+| `navegacao` (perfil `navegacao`) | `ros_ws_navegacao` | Gamepad, `mode_manager`, `stanley` e `path_publisher`, com a rota em `VIDA_PATH_FILE` |
 
-# Instalação da biblioteca WiringPi
-1- sudo apt update
-2- sudo apt upgrade
-3- sudo apt-get install git build-essential
-4- git clone https://github.com/WiringPi/WiringPi
-5- cd WiringPi
-6- ./build
+A pasta `~/projeto-vida/analises` do notebook aparece nos containers como `/caminhos`: é onde
+ficam as rotas. No dia a dia, quem inicia e para esses serviços é o painel de operação.
 
-# Compilação
-1- cmake -S src -B build -----------------Identificar as pastas src e build
-2- cd build ------------------------------Acessa diretori build
-3- make ----------------------------------Compilar
-4- ./vida --------------------------------Executar
-*Caso não funcione é so excluir a pasta build e repetir o processo:
+```bash
+docker compose build                                         # imagem vida-ros-ws:humble
+docker compose up -d                                         # modo manual
+docker compose stop ros_ws                                   # navegação com uma rota:
+VIDA_PATH_FILE=/caminhos/<pasta>/<rota>.csv docker compose --profile navegacao up -d navegacao
+```
 
+## Modos e comandos do gamepad
 
-*Steering control and encoder*
-Video: https://youtu.be/gFds-Ci4kwE
-This repository contains the VIDA standalone platform codes.
+| Botão | Ação |
+|---|---|
+| R2 / L2 | Acelera (até 2,5 m/s) / freia |
+| Analógico esquerdo | Esterça (até 20°) |
+| △ por 5 s | Entra no automático (serviço `navegacao`) |
+| □ por 5 s | Sai do automático |
+| L2 | Aborta o automático e freia, a qualquer momento |
+| R1 por 3 s | Modo manobra: freio solto para empurrar o veículo |
+| X / O por 5 s | Entra / sai do modo bancada (veículo suspenso) |
 
-*Example_Thread_Semaphore_SharedMemory:*
-Video: https://youtu.be/gFds-Ci4kwE
+Para entrar no automático, o veículo precisa estar parado, com o ESP32 liberando o movimento,
+GNSS com correções RTK e a antena a até 3 m do início da rota. O `mode_manager` então alinha as
+rodas, reinicia o EKF (origem e viés do giroscópio), anda em linha reta até obter o rumo pelo
+GNSS, confere o alinhamento com a rota e passa o comando ao Stanley. No fim da rota, o veículo
+freia e para.
 
+## Rotas
 
-teste 
+As rotas são arquivos CSV em latitude e longitude (cabeçalho `# vida_path v1`), reamostrados a
+cada 0,25 m. No dia a dia, são gravadas pelo painel de operação. Pelo terminal:
+
+```bash
+# desenhada no Google Earth (KML)
+ros2 run vida_navigation path_tools from-kml pista.kml pista.csv --name pista
+# gravada dirigindo, a partir do EKF
+ros2 run vida_navigation path_recorder --ros-args -p output_file:=volta_bruta.csv
+ros2 run vida_navigation path_tools from-recording volta_bruta.csv pista.csv
+# validar uma rota (raio mínimo, reta inicial) e gerar o gráfico
+ros2 run vida_navigation path_tools validate pista.csv
+```
+
+## Simulação e testes
+
+```bash
+ros2 launch vida_navigation simulation.launch.py       # simulador com a rota de exemplo
+ros2 run vida_navigation sim_scenarios volta           # operador simulado
+cd ros_ws/src/vida_navigation && python3 -m pytest test
+```
+
+Cenários disponíveis: `volta`, `float`, `l2`, `quadrado`, `rtk_perdido`, `gps_perdido`,
+`esp_bloqueio`, `longe` e `desalinhado`. Com `gamepad:=true`, dá para dirigir o simulador.
+
+## Rede até a Odroid em outro notebook
+
+Os scripts de `scripts/rede/` preparam um notebook com Ubuntu para se conectar à Odroid pelo
+cabo: instalam o compartilhamento de internet (NAT), o comando `vida-rede` e o serviço usado pelo
+botão **Conectar à Odroid** do painel. O perfil de rede da Odroid só existe enquanto a conexão
+está ativa, e a porta volta ao modo automático (DHCP) ao desconectar ou reiniciar.
+
+```bash
+sudo scripts/rede/preparar_computador.sh              # instala
+scripts/rede/preparar_computador.sh --verificar       # só confere
+sudo scripts/rede/preparar_computador.sh --remover    # desfaz
+```
+
+O passo a passo completo está na página do projeto.
+
+## Licença
+
+MIT. Veja [`LICENSE`](LICENSE).
